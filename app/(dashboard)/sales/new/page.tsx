@@ -770,7 +770,9 @@ export default function NewSalePage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-(--text-primary)">{sale.saleNumber}</p>
+                  <p className="font-semibold text-(--text-primary)">
+                    {sale.saleNumber}
+                  </p>
                   <p className="mt-1 text-sm text-(--text-secondary)">
                     {formatSaleDate(sale.saleDate)} · {sale.paymentMethod}
                   </p>
@@ -781,7 +783,9 @@ export default function NewSalePage() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
                 <p>Subtotal: {currency(sale.subtotal)}</p>
-                <p className="text-right">Discount: {currency(sale.discountTotal)}</p>
+                <p className="text-right">
+                  Discount: {currency(sale.discountTotal)}
+                </p>
                 <p className="col-span-2 font-semibold text-(--text-primary)">
                   Grand total: {currency(sale.grandTotal)}
                 </p>
