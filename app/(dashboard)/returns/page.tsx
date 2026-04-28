@@ -145,8 +145,7 @@ export default function ReturnsPage() {
       </section>
       <section className="space-y-4 rounded-[1.8rem] bg-[var(--surface-accent-soft)] p-6 ring-1 ring-[var(--stroke-soft)]">
         <p className="text-sm leading-7 text-[var(--text-primary)]">
-          Customer return adds stock back. Damaged keeps stock unchanged and
-          records loss on average cost basis.
+          Customer return adds stock back. Damaged records the loss.
         </p>
       </section>
     </div>

@@ -211,10 +211,6 @@ export default function InvestmentsPage() {
         <h2 className="text-2xl font-semibold tracking-tight">
           Investments and history
         </h2>
-        <p className="mt-3 text-sm leading-7 text-(--text-secondary)">
-          Partner submits own investment. Other active partners verify. Only
-          approved capital counts in profit-share math.
-        </p>
       </section>
 
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
@@ -223,18 +219,11 @@ export default function InvestmentsPage() {
             <h3 className="text-xl font-semibold tracking-tight">
               Approved capital by partner
             </h3>
-            <p className="mt-2 text-sm leading-7 text-(--text-secondary)">
-              Running total of approved investments for each active partner.
-            </p>
           </div>
           <div className="rounded-[1.2rem] bg-(--surface-accent-soft) p-4">
             <p className="text-sm text-(--text-secondary)">Balance in hand</p>
             <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
               {currency(data?.balance.currentBalance ?? 0)}
-            </p>
-            <p className="mt-2 text-sm leading-7 text-(--text-secondary)">
-              Approved investments + completed sales - customer refunds -
-              purchases - approved expenses.
             </p>
           </div>
         </div>
@@ -414,7 +403,7 @@ export default function InvestmentsPage() {
       </section>
 
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <h3 className="text-xl font-semibold tracking-tight">
             Investment history
           </h3>
@@ -497,7 +486,7 @@ export default function InvestmentsPage() {
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <button
             className="btn-secondary"
             disabled={(data?.pagination.page ?? 1) <= 1}

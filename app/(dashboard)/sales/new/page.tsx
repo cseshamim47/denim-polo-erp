@@ -212,7 +212,9 @@ export default function NewSalePage() {
   const skuOptions = skuInput
     ? allVariants
         .filter((variant) =>
-          variant.sku.toLocaleLowerCase().includes(skuInput.toLocaleLowerCase()),
+          variant.sku
+            .toLocaleLowerCase()
+            .includes(skuInput.toLocaleLowerCase()),
         )
         .slice(0, 40)
     : allVariants.slice(0, 40);
@@ -330,9 +332,7 @@ export default function NewSalePage() {
     }
 
     if (reduceAmount > maxReduceAmount) {
-      setStatus(
-        `Reduced amount exceeds limit (${currency(maxReduceAmount)}).`,
-      );
+      setStatus(`Reduced amount exceeds limit (${currency(maxReduceAmount)}).`);
       return;
     }
 
@@ -376,310 +376,313 @@ export default function NewSalePage() {
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="space-y-6">
-        <div className="rounded-[1.8rem] bg-(--surface-panel-strong) p-6 ring-1 ring-(--stroke-soft)">
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-(--text-secondary)">
-            Fast sales entry
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            Category to confirm in a few taps.
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-(--text-secondary)">
-            Default quantity stays at 1. Search works for quick SKU lookup. Same
-            variant merges into one line.
-          </p>
-        </div>
-
-        <div className="grid gap-4 rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft) md:grid-cols-2">
-          <div className="relative space-y-2 text-sm text-(--text-secondary) md:col-span-2">
-            <p>Search SKU / color / size</p>
-            <input
-              className="field"
-              value={skuInput}
-              onBlur={() => {
-                if (ignoreNextSkuBlurRef.current) {
-                  ignoreNextSkuBlurRef.current = false;
-                  return;
-                }
-
-                window.setTimeout(() => setIsSkuDropdownOpen(false), 120);
-              }}
-              onChange={(event) => {
-                applySkuSelection(event.target.value);
-                setIsSkuDropdownOpen(true);
-              }}
-              onFocus={() => setIsSkuDropdownOpen(true)}
-              placeholder="Type SKU to auto-select variant"
-            />
-            {isSkuDropdownOpen && skuOptions.length > 0 ? (
-              <div className="absolute z-10 mt-1 grid max-h-64 w-full gap-1 overflow-y-auto rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                {skuOptions.map((variant) => (
-                  <button
-                    key={variant.id}
-                    className="rounded-xl px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-accent-soft)"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      ignoreNextSkuBlurRef.current = true;
-                      applySkuSelection(variant.sku);
-                      setIsSkuDropdownOpen(false);
-                    }}
-                    type="button"
-                  >
-                    <span className="font-medium">{variant.sku}</span>
-                    <span className="ml-2 text-(--text-secondary)">
-                      {getProductNameById(variant.productId)} · {variant.color} · {variant.size}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
+          <div className="rounded-[1.8rem] bg-(--surface-panel-strong) p-6 ring-1 ring-(--stroke-soft)">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-(--text-secondary)">
+              Fast sales entry
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight">
+              Create a sale in a few taps.
+            </h2>
           </div>
-          <label className="space-y-2 text-sm text-(--text-secondary)">
-            Category
-            <select
-              className="field"
-              value={category}
-              onChange={(event) => {
-                setCategory(event.target.value);
-                setProductId("");
-                setVariantId("");
-              }}
-            >
-              <option value="">All categories</option>
-              {categories.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2 text-sm text-(--text-secondary)">
-            Product
-            <select
-              className="field"
-              value={productId}
-              onChange={(event) => {
-                setProductId(event.target.value);
-                setSkuInput("");
-                setVariantId("");
-              }}
-            >
-              <option value="">Select product</option>
-              {filteredProducts.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2 text-sm text-(--text-secondary)">
-            Variant
-            <select
-              className="field"
-              value={variantId}
-              onChange={(event) => {
-                const nextVariantId = event.target.value;
-                setVariantId(nextVariantId);
 
-                const nextVariant = variants.find(
-                  (variant) => variant.id === nextVariantId,
-                );
-                if (nextVariant) {
-                  setSkuInput(nextVariant.sku);
-                }
-              }}
-            >
-              <option value="">Select variant</option>
-              {variants.map((variant) => (
-                <option key={variant.id} value={variant.id}>
-                  {variant.sku} · {variant.color} · {variant.size} · stock{" "}
-                  {variant.stockQty}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-2 text-sm text-(--text-secondary)">
-            Quantity
-            <input
-              className="field"
-              min={1}
-              type="number"
-              value={qty}
-              onChange={(event) => setQty(Number(event.target.value) || 1)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-(--text-secondary)">
-            Payment method
-            <select
-              className="field"
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value)}
-            >
-              <option value="cash">Cash</option>
-              <option value="bkash">bKash</option>
-              <option value="card">Card</option>
-            </select>
-          </label>
-        </div>
+          <div className="grid gap-4 rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft) md:grid-cols-2">
+            <div className="relative space-y-2 text-sm text-(--text-secondary) md:col-span-2">
+              <p>Search SKU / color / size</p>
+              <input
+                className="field"
+                value={skuInput}
+                onBlur={() => {
+                  if (ignoreNextSkuBlurRef.current) {
+                    ignoreNextSkuBlurRef.current = false;
+                    return;
+                  }
 
-        <button
-          className="btn-primary w-full sm:w-auto"
-          onClick={addLine}
-          type="button"
-        >
-          Add line
-        </button>
+                  window.setTimeout(() => setIsSkuDropdownOpen(false), 120);
+                }}
+                onChange={(event) => {
+                  applySkuSelection(event.target.value);
+                  setIsSkuDropdownOpen(true);
+                }}
+                onFocus={() => setIsSkuDropdownOpen(true)}
+                placeholder="Type SKU to auto-select variant"
+              />
+              {isSkuDropdownOpen && skuOptions.length > 0 ? (
+                <div className="absolute z-10 mt-1 grid max-h-64 w-full gap-1 overflow-y-auto rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
+                  {skuOptions.map((variant) => (
+                    <button
+                      key={variant.id}
+                      className="rounded-xl px-3 py-2 text-left text-sm text-(--text-primary) hover:bg-(--surface-accent-soft)"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        ignoreNextSkuBlurRef.current = true;
+                        applySkuSelection(variant.sku);
+                        setIsSkuDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <span className="font-medium">{variant.sku}</span>
+                      <span className="ml-2 text-(--text-secondary)">
+                        {getProductNameById(variant.productId)} ·{" "}
+                        {variant.color} · {variant.size}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Category
+              <select
+                className="field"
+                value={category}
+                onChange={(event) => {
+                  setCategory(event.target.value);
+                  setProductId("");
+                  setVariantId("");
+                }}
+              >
+                <option value="">All categories</option>
+                {categories.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Product
+              <select
+                className="field"
+                value={productId}
+                onChange={(event) => {
+                  setProductId(event.target.value);
+                  setSkuInput("");
+                  setVariantId("");
+                }}
+              >
+                <option value="">Select product</option>
+                {filteredProducts.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Variant
+              <select
+                className="field"
+                value={variantId}
+                onChange={(event) => {
+                  const nextVariantId = event.target.value;
+                  setVariantId(nextVariantId);
+
+                  const nextVariant = variants.find(
+                    (variant) => variant.id === nextVariantId,
+                  );
+                  if (nextVariant) {
+                    setSkuInput(nextVariant.sku);
+                  }
+                }}
+              >
+                <option value="">Select variant</option>
+                {variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    {variant.sku} · {variant.color} · {variant.size} · stock{" "}
+                    {variant.stockQty}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Quantity
+              <input
+                className="field"
+                min={1}
+                type="number"
+                value={qty}
+                onChange={(event) => setQty(Number(event.target.value) || 1)}
+              />
+            </label>
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Payment method
+              <select
+                className="field"
+                value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value)}
+              >
+                <option value="cash">Cash</option>
+                <option value="bkash">bKash</option>
+                <option value="card">Card</option>
+              </select>
+            </label>
+          </div>
+
+          <button
+            className="btn-primary w-full sm:w-auto"
+            onClick={addLine}
+            type="button"
+          >
+            Add line
+          </button>
         </section>
 
         <aside className="space-y-4 rounded-[1.8rem] bg-(--surface-accent) p-6 text-(--text-inverse)">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-white/60">
-              Current sale
-            </p>
-            <h3 className="mt-3 text-3xl font-semibold tracking-tight">
-              {currency(payableTotal)}
-            </h3>
-            <p className="mt-1 text-xs text-white/70">
-              Subtotal {currency(total)}
-              {appliedReduceAmount > 0
-                ? ` · Reduced ${currency(appliedReduceAmount)}`
-                : ""}
-            </p>
-          </div>
-          <button className="btn-secondary" onClick={submitSale} type="button">
-            Confirm sale
-          </button>
-        </div>
-
-        <div className="rounded-[1.2rem] bg-white/10 p-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="btn-secondary"
-              onClick={() => setShowNoteInput((current) => !current)}
-              type="button"
-            >
-              {showNoteInput ? "Hide Note" : "Add Note"}
-            </button>
-            <button
-              className="btn-secondary"
-              onClick={() => setShowReduceInput((current) => !current)}
-              type="button"
-            >
-              {showReduceInput ? "Hide Reduce Amount" : "Reduce Amount"}
-            </button>
-          </div>
-          {showReduceInput ? (
-            <label className="mt-3 block space-y-2 text-sm text-white/80">
-              Reduce amount
-              <input
-                className="field text-foreground"
-                min={0}
-                max={maxReduceAmount}
-                step="0.01"
-                type="number"
-                value={reduceAmount === 0 ? "" : reduceAmount}
-                onChange={(event) =>
-                  updateReduceAmount(Number(event.target.value) || 0)
-                }
-                placeholder="0"
-              />
-              <p className="text-xs text-white/70">
-                Max allowed: {currency(maxReduceAmount)} (lower of Tk 50 or 5% of subtotal)
+          <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-white/60">
+                Current sale
               </p>
-            </label>
-          ) : null}
-          {showNoteInput ? (
-            <textarea
-              className="field mt-3 min-h-24 text-foreground"
-              placeholder="Optional note for this sale"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          ) : null}
-        </div>
+              <h3 className="mt-3 text-3xl font-semibold tracking-tight">
+                {currency(payableTotal)}
+              </h3>
+              <p className="mt-1 text-xs text-white/70">
+                Subtotal {currency(total)}
+                {appliedReduceAmount > 0
+                  ? ` · Reduced ${currency(appliedReduceAmount)}`
+                  : ""}
+              </p>
+            </div>
+            <button
+              className="btn-secondary w-full sm:w-auto"
+              onClick={submitSale}
+              type="button"
+            >
+              Confirm sale
+            </button>
+          </div>
 
-        <div className="space-y-3">
-          {cart.length ? (
-            cart.map((line) => (
-              <div
-                key={line.variantId}
-                className="rounded-[1.4rem] bg-white/10 p-4"
+          <div className="rounded-[1.2rem] bg-white/10 p-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowNoteInput((current) => !current)}
+                type="button"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-white">{line.label}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">
-                      {line.sku}
-                    </p>
-                  </div>
-                  <button
-                    className="text-sm text-white/70"
-                    onClick={() =>
-                      setCart((currentCart) =>
-                        currentCart.filter(
-                          (item) => item.variantId !== line.variantId,
-                        ),
-                      )
-                    }
-                    type="button"
-                  >
-                    Remove
-                  </button>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <label className="space-y-2 text-white/70">
-                    Qty
-                    <input
-                      className="field text-foreground"
-                      type="number"
-                      min={1}
-                      value={line.qty}
-                      onChange={(event) =>
-                        setCart((currentCart) =>
-                          currentCart.map((item) =>
-                            item.variantId === line.variantId
-                              ? {
-                                  ...item,
-                                  qty: Number(event.target.value) || 1,
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                  <label className="space-y-2 text-white/70">
-                    Selling price
-                    <input
-                      className="field text-foreground"
-                      type="number"
-                      min={0}
-                      value={line.sellingPrice}
-                      onChange={(event) =>
-                        setCart((currentCart) =>
-                          currentCart.map((item) =>
-                            item.variantId === line.variantId
-                              ? {
-                                  ...item,
-                                  sellingPrice: Number(event.target.value) || 0,
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="rounded-[1.4rem] border border-dashed border-white/20 p-4 text-sm text-white/70">
-              Cart empty. Pick product, variant, qty, then add line.
-            </p>
-          )}
-        </div>
+                {showNoteInput ? "Hide Note" : "Add Note"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => setShowReduceInput((current) => !current)}
+                type="button"
+              >
+                {showReduceInput ? "Hide Reduce Amount" : "Reduce Amount"}
+              </button>
+            </div>
+            {showReduceInput ? (
+              <label className="mt-3 block space-y-2 text-sm text-white/80">
+                Reduce amount
+                <input
+                  className="field text-foreground"
+                  min={0}
+                  max={maxReduceAmount}
+                  step="0.01"
+                  type="number"
+                  value={reduceAmount === 0 ? "" : reduceAmount}
+                  onChange={(event) =>
+                    updateReduceAmount(Number(event.target.value) || 0)
+                  }
+                  placeholder="0"
+                />
+                <p className="text-xs text-white/70">
+                  Max allowed: {currency(maxReduceAmount)} (lower of Tk 50 or 5%
+                  of subtotal)
+                </p>
+              </label>
+            ) : null}
+            {showNoteInput ? (
+              <textarea
+                className="field mt-3 min-h-24 text-foreground"
+                placeholder="Optional note for this sale"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            ) : null}
+          </div>
 
-        {status ? <p className="text-sm text-white/80">{status}</p> : null}
+          <div className="space-y-3">
+            {cart.length ? (
+              cart.map((line) => (
+                <div
+                  key={line.variantId}
+                  className="rounded-[1.4rem] bg-white/10 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-white">{line.label}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">
+                        {line.sku}
+                      </p>
+                    </div>
+                    <button
+                      className="text-sm text-white/70"
+                      onClick={() =>
+                        setCart((currentCart) =>
+                          currentCart.filter(
+                            (item) => item.variantId !== line.variantId,
+                          ),
+                        )
+                      }
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                    <label className="space-y-2 text-white/70">
+                      Qty
+                      <input
+                        className="field text-foreground"
+                        type="number"
+                        min={1}
+                        value={line.qty}
+                        onChange={(event) =>
+                          setCart((currentCart) =>
+                            currentCart.map((item) =>
+                              item.variantId === line.variantId
+                                ? {
+                                    ...item,
+                                    qty: Number(event.target.value) || 1,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="space-y-2 text-white/70">
+                      Selling price
+                      <input
+                        className="field text-foreground"
+                        type="number"
+                        min={0}
+                        value={line.sellingPrice}
+                        onChange={(event) =>
+                          setCart((currentCart) =>
+                            currentCart.map((item) =>
+                              item.variantId === line.variantId
+                                ? {
+                                    ...item,
+                                    sellingPrice:
+                                      Number(event.target.value) || 0,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-[1.4rem] border border-dashed border-white/20 p-4 text-sm text-white/70">
+                Cart empty. Pick product, variant, qty, then add line.
+              </p>
+            )}
+          </div>
+
+          {status ? <p className="text-sm text-white/80">{status}</p> : null}
         </aside>
       </div>
 
@@ -759,7 +762,61 @@ export default function NewSalePage() {
           </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-[1.2rem] border border-(--stroke-soft)">
+        <div className="mt-4 grid gap-3 md:hidden">
+          {salesHistory.map((sale) => (
+            <article
+              key={sale.id}
+              className="rounded-[1.2rem] border border-(--stroke-soft) p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-(--text-primary)">{sale.saleNumber}</p>
+                  <p className="mt-1 text-sm text-(--text-secondary)">
+                    {formatSaleDate(sale.saleDate)} · {sale.paymentMethod}
+                  </p>
+                </div>
+                <span className="rounded-full bg-(--surface-accent-soft) px-2 py-1 text-xs capitalize text-(--text-secondary)">
+                  {sale.status}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
+                <p>Subtotal: {currency(sale.subtotal)}</p>
+                <p className="text-right">Discount: {currency(sale.discountTotal)}</p>
+                <p className="col-span-2 font-semibold text-(--text-primary)">
+                  Grand total: {currency(sale.grandTotal)}
+                </p>
+              </div>
+              <p className="mt-3 text-xs leading-6 text-(--text-secondary)">
+                {sale.items
+                  .slice(0, 3)
+                  .map((item) => `${item.skuSnapshot} x${item.qty}`)
+                  .join(" | ") || "-"}
+              </p>
+              {sale.note ? (
+                <p className="mt-2 text-xs leading-6 text-(--text-secondary)">
+                  {sale.note}
+                </p>
+              ) : null}
+            </article>
+          ))}
+          {!historyLoading && !historyError && salesHistory.length === 0 ? (
+            <p className="rounded-[1.2rem] border border-(--stroke-soft) p-4 text-sm text-(--text-secondary)">
+              No sales matched your filters.
+            </p>
+          ) : null}
+          {historyLoading ? (
+            <p className="rounded-[1.2rem] border border-(--stroke-soft) p-4 text-sm text-(--text-secondary)">
+              Loading sales history...
+            </p>
+          ) : null}
+          {historyError ? (
+            <p className="rounded-[1.2rem] border border-(--stroke-soft) p-4 text-sm text-red-600">
+              {historyError}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-4 hidden overflow-x-auto rounded-[1.2rem] border border-(--stroke-soft) md:block">
           <table className="min-w-full text-sm text-(--text-primary)">
             <thead className="bg-(--surface-panel-strong) text-xs uppercase tracking-[0.18em] text-(--text-secondary)">
               <tr>

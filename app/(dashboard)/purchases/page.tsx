@@ -493,8 +493,7 @@ export default function NewPurchasePage() {
       <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
         <h1 className="text-2xl font-semibold tracking-tight">New Purchase</h1>
         <p className="mt-1 text-sm text-(--text-secondary)">
-          Record inventory received. Transport and other costs are part of this
-          purchase, not an expense.
+          Record inventory received.
         </p>
       </div>
 
@@ -638,7 +637,7 @@ export default function NewPurchasePage() {
                 </div>
 
                 {/* Size + Color */}
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-1.5 text-sm font-medium text-foreground">
                     Size
                     <input
@@ -698,7 +697,7 @@ export default function NewPurchasePage() {
                 </div>
 
                 {/* Qty + Cost + Row total */}
-                <div className="mt-3 grid grid-cols-3 gap-3">
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <label className="grid gap-1.5 text-sm font-medium text-foreground">
                     Qty
                     <input
@@ -958,7 +957,49 @@ export default function NewPurchasePage() {
           </div>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-[1.2rem] ring-1 ring-(--stroke-soft)">
+        <div className="mt-4 grid gap-3 md:hidden">
+          {isHistoryLoading ? (
+            <p className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4 text-sm text-(--text-secondary)">
+              Loading purchase history...
+            </p>
+          ) : purchaseHistory.length === 0 ? (
+            <p className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4 text-sm text-(--text-secondary)">
+              No purchases found for the selected filters.
+            </p>
+          ) : (
+            purchaseHistory.map((record) => (
+              <article
+                key={record.id}
+                className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-foreground">{record.sku}</p>
+                    <p className="mt-1 text-sm text-(--text-secondary)">
+                      {record.productName} · {record.size} / {record.color}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {currency(record.cashOutTotal)}
+                  </p>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
+                  <p>Date: {new Date(record.purchaseDate).toLocaleDateString("en-BD")}</p>
+                  <p className="text-right">Qty: {record.qty}</p>
+                  <p>Cost: {currency(record.costPerUnit)}</p>
+                  <p className="text-right">Extra: {currency(record.additionalCost)}</p>
+                </div>
+                {(record.note ?? "").trim() ? (
+                  <p className="mt-3 text-xs leading-6 text-(--text-secondary)">
+                    {record.note}
+                  </p>
+                ) : null}
+              </article>
+            ))
+          )}
+        </div>
+
+        <div className="mt-4 hidden overflow-x-auto rounded-[1.2rem] ring-1 ring-(--stroke-soft) md:block">
           <table className="w-full min-w-[900px] text-sm">
             <thead className="bg-(--surface-accent-soft)">
               <tr>

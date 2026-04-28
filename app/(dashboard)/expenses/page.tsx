@@ -262,10 +262,6 @@ export default function ExpensesPage() {
         <h2 className="text-2xl font-semibold tracking-tight">
           Expenses and history
         </h2>
-        <p className="mt-3 text-sm leading-7 text-(--text-secondary)">
-          Submit an expense once. Other active partners verify it before the
-          amount is counted in the running business balance.
-        </p>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -515,7 +511,7 @@ export default function ExpensesPage() {
       </section>
 
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <h3 className="text-xl font-semibold tracking-tight">
             Expense history
           </h3>
@@ -595,7 +591,7 @@ export default function ExpensesPage() {
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <button
             className="btn-secondary"
             disabled={(data?.pagination.page ?? 1) <= 1}

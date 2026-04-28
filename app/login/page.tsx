@@ -25,10 +25,8 @@ export default async function LoginPage({
   }
 
   return (
-    <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <LoginForm callbackUrl={callbackUrl} />
-      </div>
+    <main className="flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
+      <LoginForm callbackUrl={callbackUrl} />
     </main>
   );
 }

@@ -41,49 +41,17 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
   }
 
   return (
-    <>
-      <section className="panel rounded-4xl p-6 sm:p-8 lg:p-10">
+    <section className="panel w-full max-w-xl rounded-4xl p-6 sm:p-8 lg:p-10">
+      <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.34em] text-(--text-secondary)">
           Denim Polo ERP
         </p>
-        <h1 className="mt-4 max-w-xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-          Real shop flow. No paper guesswork.
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          Sign in
         </h1>
-        <p className="mt-5 max-w-2xl text-sm leading-7 text-(--text-secondary)">
-          Partners use approved Google accounts while the salesman signs in with
-          shop credentials. Sales, stock, expenses, and returns all land in one
-          ledger.
-        </p>
+      </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
-          {[
-            [
-              "Profit snapshot",
-              "Each sale locks average cost and profit at sale time.",
-            ],
-            [
-              "Live stock",
-              "Purchase and return flow update variant stock immediately.",
-            ],
-            [
-              "Partner approvals",
-              "Expenses stay pending until required partners decide.",
-            ],
-          ].map(([title, body]) => (
-            <div
-              key={title}
-              className="rounded-3xl border border-(--stroke-soft) bg-white/75 p-4"
-            >
-              <p className="font-medium text-foreground">{title}</p>
-              <p className="mt-2 text-sm leading-6 text-(--text-secondary)">
-                {body}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel rounded-4xl p-6 sm:p-8 lg:p-10">
+      <div className="grid gap-6">
         <div className="grid gap-6">
           <div className="grid gap-4 rounded-[1.6rem] bg-(--surface-accent) p-5 text-(--text-inverse)">
             <div>
@@ -150,7 +118,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
             {error ? <p className="text-sm text-(--danger)">{error}</p> : null}
           </form>
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   );
 }

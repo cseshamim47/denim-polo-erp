@@ -40,16 +40,25 @@ function currency(value: number) {
 export default function ReportsPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
 
-  async function load() {
-    const dashboardResponse = await fetch("/api/dashboard", {
-      cache: "no-store",
-    });
-
-    setData((await dashboardResponse.json()) as DashboardResponse);
-  }
-
   useEffect(() => {
-    void load();
+    let cancelled = false;
+
+    fetch("/api/dashboard", { cache: "no-store" })
+      .then((response) => response.json() as Promise<DashboardResponse>)
+      .then((payload) => {
+        if (!cancelled) {
+          setData(payload);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setData(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -58,12 +67,6 @@ export default function ReportsPage() {
         <h2 className="text-2xl font-semibold tracking-tight">
           Profit, capital, and partner share reports
         </h2>
-        <p className="mt-3 text-sm leading-7 text-(--text-secondary)">
-          Daily and monthly profit use snapped sale profit, reduced by returns
-          and approved expenses. Partner profit share uses only approved
-          investments. Investment submission, verification, history, and filters
-          now live in a dedicated page.
-        </p>
         <Link className="btn-secondary mt-4 inline-flex" href="/investments">
           Open investments
         </Link>
@@ -91,7 +94,7 @@ export default function ReportsPage() {
       </section>
 
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm text-(--text-secondary)">Capital invested</p>
             <p className="mt-2 text-3xl font-semibold">
@@ -107,7 +110,7 @@ export default function ReportsPage() {
           {(data?.capital.partnerShares ?? []).map((share) => (
             <div
               key={share.partnerId}
-              className="grid grid-cols-[1fr_auto] gap-3 rounded-[1.2rem] border border-(--stroke-soft) p-4"
+              className="grid gap-3 rounded-[1.2rem] border border-(--stroke-soft) p-4 sm:grid-cols-[1fr_auto]"
             >
               <div>
                 <p className="font-medium text-foreground">
@@ -118,7 +121,7 @@ export default function ReportsPage() {
                   {share.profitSharePercent}%
                 </p>
               </div>
-              <p className="text-right text-sm font-semibold text-foreground">
+              <p className="text-left text-sm font-semibold text-foreground sm:text-right">
                 {currency(share.profitShareAmount)}
               </p>
             </div>
@@ -127,7 +130,30 @@ export default function ReportsPage() {
       </section>
 
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
-        <div className="grid gap-3">
+        <div className="grid gap-3 md:hidden">
+          {data?.trend.map((entry) => (
+            <div
+              key={entry.date}
+              className="rounded-[1.2rem] border border-(--stroke-soft) p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-(--text-secondary)">
+                  {entry.date.slice(5)}
+                </span>
+                <span className="text-sm font-semibold text-foreground">
+                  {currency(entry.profit)}
+                </span>
+              </div>
+              <div className="mt-3 h-3 rounded-full bg-(--surface-accent-soft)">
+                <div
+                  className="h-3 rounded-full bg-(--surface-accent)"
+                  style={{ width: `${Math.max(entry.salesTotal / 50, 6)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden gap-3 md:grid">
           {data?.trend.map((entry) => (
             <div
               key={entry.date}
