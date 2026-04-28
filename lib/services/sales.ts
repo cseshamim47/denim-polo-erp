@@ -15,6 +15,8 @@ export async function createSale(input: {
   soldBy: string;
   paymentMethod: string;
   saleDate: Date;
+  discountAmount?: number;
+  note?: string;
   items: Array<{
     variantId: string;
     qty: number;
@@ -87,13 +89,25 @@ export async function createSale(input: {
     });
   }
 
+  const maxDiscountAllowed = Math.min(50, subtotal * 0.05);
+  const discountAmount = Math.max(input.discountAmount ?? 0, 0);
+
+  if (discountAmount > maxDiscountAllowed) {
+    throw new Error(
+      `discount exceeds allowed threshold (${maxDiscountAllowed.toFixed(2)})`,
+    );
+  }
+
+  const grandTotal = subtotal - discountAmount;
+
   return SaleModel.create({
     saleNumber: buildSaleNumber(),
     items: saleItems,
     subtotal: toDecimal128(subtotal),
-    discountTotal: toDecimal128(0),
-    grandTotal: toDecimal128(subtotal),
+    discountTotal: toDecimal128(discountAmount),
+    grandTotal: toDecimal128(grandTotal),
     paymentMethod: input.paymentMethod,
+    note: input.note?.trim() || null,
     soldBy: new Types.ObjectId(input.soldBy),
     saleDate: input.saleDate,
     status: "completed",

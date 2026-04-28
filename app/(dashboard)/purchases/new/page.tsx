@@ -144,7 +144,9 @@ function allocateAdditionalCosts(
     return items.map(() => 0);
   }
 
-  const weights = items.map((item) => Math.max(Math.round(item.total * 100), 1));
+  const weights = items.map((item) =>
+    Math.max(Math.round(item.total * 100), 1),
+  );
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
 
   let allocated = 0;
@@ -177,7 +179,9 @@ export default function NewPurchasePage() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyFromDate, setHistoryFromDate] = useState("");
   const [historyToDate, setHistoryToDate] = useState("");
-  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryRecord[]>([]);
+  const [purchaseHistory, setPurchaseHistory] = useState<
+    PurchaseHistoryRecord[]
+  >([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   function setSuccess(msg: string) {
@@ -191,11 +195,12 @@ export default function NewPurchasePage() {
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const [productsResponse, variantsResponse, purchasesResponse] = await Promise.all([
-          fetch("/api/products", { cache: "no-store" }),
-          fetch("/api/variants", { cache: "no-store" }),
-          fetch("/api/purchases", { cache: "no-store" }),
-        ]);
+        const [productsResponse, variantsResponse, purchasesResponse] =
+          await Promise.all([
+            fetch("/api/products", { cache: "no-store" }),
+            fetch("/api/variants", { cache: "no-store" }),
+            fetch("/api/purchases", { cache: "no-store" }),
+          ]);
 
         const productsPayload = await readJsonResponse<{
           products?: Product[];
@@ -207,7 +212,11 @@ export default function NewPurchasePage() {
           purchases?: PurchaseHistoryRecord[];
         }>(purchasesResponse);
 
-        if (!productsResponse.ok || !variantsResponse.ok || !purchasesResponse.ok) {
+        if (
+          !productsResponse.ok ||
+          !variantsResponse.ok ||
+          !purchasesResponse.ok
+        ) {
           setError("Unable to load purchase catalog right now.");
           return;
         }
@@ -249,9 +258,9 @@ export default function NewPurchasePage() {
       const response = await fetch(`/api/purchases?${params.toString()}`, {
         cache: "no-store",
       });
-      const payload = await readJsonResponse<{ purchases?: PurchaseHistoryRecord[] }>(
-        response,
-      );
+      const payload = await readJsonResponse<{
+        purchases?: PurchaseHistoryRecord[];
+      }>(response);
 
       if (!response.ok) {
         setError("Unable to load purchase history right now.");
@@ -572,7 +581,9 @@ export default function NewPurchasePage() {
                       list={`sku-options-${item.id}`}
                       placeholder="Type or pick an SKU"
                       value={item.sku}
-                      onChange={(event) => updateItemSku(item.id, event.target.value)}
+                      onChange={(event) =>
+                        updateItemSku(item.id, event.target.value)
+                      }
                     />
                     <datalist id={`sku-options-${item.id}`}>
                       {skuOptions.map((sku) => (
@@ -798,9 +809,7 @@ export default function NewPurchasePage() {
                 type="number"
                 value={transportCost === 0 ? "" : transportCost}
                 onChange={(event) =>
-                  setTransportCost(
-                    Math.max(Number(event.target.value) || 0, 0),
-                  )
+                  setTransportCost(Math.max(Number(event.target.value) || 0, 0))
                 }
               />
             </label>
@@ -849,9 +858,7 @@ export default function NewPurchasePage() {
           <button
             className="btn-primary w-full py-4 text-base"
             disabled={
-              isSubmitting ||
-              products.length === 0 ||
-              variants.length === 0
+              isSubmitting || products.length === 0 || variants.length === 0
             }
             onClick={() => void submitPurchase()}
             type="button"
@@ -869,7 +876,9 @@ export default function NewPurchasePage() {
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-accent) text-xs font-bold text-(--text-inverse)">
             4
           </span>
-          <h2 className="text-lg font-semibold tracking-tight">Purchase history</h2>
+          <h2 className="text-lg font-semibold tracking-tight">
+            Purchase history
+          </h2>
           <button
             className="btn-secondary ml-auto"
             onClick={() => void loadHistory()}
@@ -937,7 +946,9 @@ export default function NewPurchasePage() {
                 <th className="px-3 py-2 text-left font-semibold">Date</th>
                 <th className="px-3 py-2 text-left font-semibold">SKU</th>
                 <th className="px-3 py-2 text-left font-semibold">Product</th>
-                <th className="px-3 py-2 text-left font-semibold">Size/Color</th>
+                <th className="px-3 py-2 text-left font-semibold">
+                  Size/Color
+                </th>
                 <th className="px-3 py-2 text-right font-semibold">Qty</th>
                 <th className="px-3 py-2 text-right font-semibold">Cost</th>
                 <th className="px-3 py-2 text-right font-semibold">Extra</th>
@@ -948,21 +959,32 @@ export default function NewPurchasePage() {
             <tbody className="divide-y divide-(--stroke-soft) bg-white">
               {isHistoryLoading ? (
                 <tr>
-                  <td className="px-3 py-5 text-center text-(--text-secondary)" colSpan={9}>
+                  <td
+                    className="px-3 py-5 text-center text-(--text-secondary)"
+                    colSpan={9}
+                  >
                     Loading purchase history...
                   </td>
                 </tr>
               ) : purchaseHistory.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-5 text-center text-(--text-secondary)" colSpan={9}>
+                  <td
+                    className="px-3 py-5 text-center text-(--text-secondary)"
+                    colSpan={9}
+                  >
                     No purchases found for the selected filters.
                   </td>
                 </tr>
               ) : (
                 purchaseHistory.map((record) => (
-                  <tr key={record.id} className="hover:bg-(--surface-accent-soft)/50">
+                  <tr
+                    key={record.id}
+                    className="hover:bg-(--surface-accent-soft)/50"
+                  >
                     <td className="px-3 py-2">
-                      {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
+                      {new Date(record.purchaseDate).toLocaleDateString(
+                        "en-BD",
+                      )}
                     </td>
                     <td className="px-3 py-2">{record.sku}</td>
                     <td className="px-3 py-2">{record.productName}</td>
@@ -970,9 +992,15 @@ export default function NewPurchasePage() {
                       {record.size} / {record.color}
                     </td>
                     <td className="px-3 py-2 text-right">{record.qty}</td>
-                    <td className="px-3 py-2 text-right">{currency(record.costPerUnit)}</td>
-                    <td className="px-3 py-2 text-right">{currency(record.additionalCost)}</td>
-                    <td className="px-3 py-2 text-right">{currency(record.cashOutTotal)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {currency(record.costPerUnit)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {currency(record.additionalCost)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {currency(record.cashOutTotal)}
+                    </td>
                     <td className="px-3 py-2 text-xs text-(--text-secondary)">
                       {(record.note ?? "").trim() || "-"}
                     </td>

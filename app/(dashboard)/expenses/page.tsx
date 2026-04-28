@@ -87,11 +87,11 @@ export default function ExpensesPage() {
   const normalizedTitle = form.title.trim().toLocaleLowerCase();
   const filteredTitleSuggestions = (data?.titleSuggestions ?? []).filter(
     (title) => {
-    if (!normalizedTitle) {
-      return true;
-    }
+      if (!normalizedTitle) {
+        return true;
+      }
 
-    return title.toLocaleLowerCase().includes(normalizedTitle);
+      return title.toLocaleLowerCase().includes(normalizedTitle);
     },
   );
   const canCreateTitle =
@@ -294,7 +294,10 @@ export default function ExpensesPage() {
                     ...current,
                     title: event.target.value,
                   }));
-                  setFieldErrors((current) => ({ ...current, title: undefined }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    title: undefined,
+                  }));
                   setIsTitleDropdownOpen(true);
                 }}
                 onFocus={() => setIsTitleDropdownOpen(true)}
@@ -368,7 +371,9 @@ export default function ExpensesPage() {
                 value={form.amount}
               />
               {fieldErrors.amount ? (
-                <p className="mt-2 text-sm text-red-600">{fieldErrors.amount}</p>
+                <p className="mt-2 text-sm text-red-600">
+                  {fieldErrors.amount}
+                </p>
               ) : null}
             </div>
 
@@ -528,11 +533,10 @@ export default function ExpensesPage() {
                 <div>
                   <p className="font-medium text-foreground">{expense.title}</p>
                   <p className="mt-1 text-sm text-(--text-secondary)">
-                    {expense.submittedByName} · Expense date {new Date(
-                      expense.expenseDate,
-                    ).toLocaleDateString("en-BD")} · Submitted {new Date(
-                      expense.submittedAt,
-                    ).toLocaleDateString("en-BD")}
+                    {expense.submittedByName} · Expense date{" "}
+                    {new Date(expense.expenseDate).toLocaleDateString("en-BD")}{" "}
+                    · Submitted{" "}
+                    {new Date(expense.submittedAt).toLocaleDateString("en-BD")}
                   </p>
                   <p className="mt-2 text-sm text-(--text-secondary)">
                     Status {expense.status} · approvals {expense.approvalCount}/
@@ -568,14 +572,18 @@ export default function ExpensesPage() {
                     <div className="mt-3 flex gap-2">
                       <button
                         className="btn-primary"
-                        onClick={() => void reviewExpense(expense.id, "approved")}
+                        onClick={() =>
+                          void reviewExpense(expense.id, "approved")
+                        }
                         type="button"
                       >
                         Approve
                       </button>
                       <button
                         className="btn-secondary"
-                        onClick={() => void reviewExpense(expense.id, "rejected")}
+                        onClick={() =>
+                          void reviewExpense(expense.id, "rejected")
+                        }
                         type="button"
                       >
                         Reject
@@ -601,7 +609,8 @@ export default function ExpensesPage() {
             Previous
           </button>
           <p className="text-sm text-(--text-secondary)">
-            Page {data?.pagination.page ?? 1} / {data?.pagination.totalPages ?? 1}
+            Page {data?.pagination.page ?? 1} /{" "}
+            {data?.pagination.totalPages ?? 1}
           </p>
           <button
             className="btn-secondary"

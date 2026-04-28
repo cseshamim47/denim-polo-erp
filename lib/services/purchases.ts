@@ -113,7 +113,9 @@ export async function listPurchases(input?: {
     .select({ name: 1 })
     .lean();
 
-  const variantById = new Map(variants.map((variant) => [variant._id.toString(), variant]));
+  const variantById = new Map(
+    variants.map((variant) => [variant._id.toString(), variant]),
+  );
   const productNameById = new Map(
     products.map((product) => [product._id.toString(), product.name]),
   );
@@ -121,7 +123,7 @@ export async function listPurchases(input?: {
   const records = purchases.map((purchase) => {
     const variant = variantById.get(purchase.variantId.toString());
     const productName = variant
-      ? productNameById.get(variant.productId.toString()) ?? "Unknown product"
+      ? (productNameById.get(variant.productId.toString()) ?? "Unknown product")
       : "Unknown product";
 
     return {

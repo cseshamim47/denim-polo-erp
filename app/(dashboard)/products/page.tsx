@@ -20,6 +20,28 @@ type DeleteRequest = {
   }>;
 };
 
+type UpdateRequest = {
+  status: "none" | "pending" | "approved" | "rejected";
+  requestedById: string | null;
+  requestedByName: string | null;
+  requestedAt: string | null;
+  requiredApprovalCount: number;
+  approvalCount: number;
+  canReview: boolean;
+  proposal: {
+    color: string | null;
+    size: string | null;
+    sellingPrice: number | null;
+  };
+  approvals: Array<{
+    partnerId: string;
+    partnerName: string;
+    decision: "approved" | "rejected";
+    comment: string | null;
+    decidedAt: string;
+  }>;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -37,6 +59,7 @@ type Variant = {
   stockQty: number;
   sellingPrice: number;
   deleteRequest?: DeleteRequest;
+  updateRequest?: UpdateRequest;
 };
 
 type FieldErrors = {
@@ -82,7 +105,7 @@ export default function ProductsPage() {
   const [variants, setVariants] = useState<Variant[]>([]);
 
   const [activeListTab, setActiveListTab] = useState<"products" | "variants">(
-    "products",
+    "variants",
   );
   const [showProductFilters, setShowProductFilters] = useState(false);
   const [showVariantFilters, setShowVariantFilters] = useState(false);
@@ -120,6 +143,12 @@ export default function ProductsPage() {
     sizesText: "",
     sellingPrice: 0,
   });
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [updatingVariant, setUpdatingVariant] = useState<Variant | null>(null);
+  const [updateSellingPriceInput, setUpdateSellingPriceInput] = useState("");
+  const [updateSellingPriceError, setUpdateSellingPriceError] = useState<
+    string | null
+  >(null);
 
   const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
@@ -140,7 +169,9 @@ export default function ProductsPage() {
   const categorySuggestions = useMemo(
     () =>
       Array.from(
-        new Set(products.map((product) => product.category.trim()).filter(Boolean)),
+        new Set(
+          products.map((product) => product.category.trim()).filter(Boolean),
+        ),
       ).sort((left, right) => left.localeCompare(right)),
     [products],
   );
@@ -206,7 +237,9 @@ export default function ProductsPage() {
   const productCategoryOptions = useMemo(
     () =>
       Array.from(
-        new Set(products.map((product) => product.category.trim()).filter(Boolean)),
+        new Set(
+          products.map((product) => product.category.trim()).filter(Boolean),
+        ),
       ).sort((left, right) => left.localeCompare(right)),
     [products],
   );
@@ -218,7 +251,10 @@ export default function ProductsPage() {
       const stock = productStockById.get(product.id) ?? 0;
       const deleteStatus = product.deleteRequest?.status ?? "none";
 
-      if (productFilterCategory !== "all" && product.category !== productFilterCategory) {
+      if (
+        productFilterCategory !== "all" &&
+        product.category !== productFilterCategory
+      ) {
         return false;
       }
       if (productFilterStock === "in-stock" && stock <= 0) {
@@ -259,7 +295,10 @@ export default function ProductsPage() {
     return variants.filter((variant) => {
       const deleteStatus = variant.deleteRequest?.status ?? "none";
 
-      if (variantFilterProductId !== "all" && variant.productId !== variantFilterProductId) {
+      if (
+        variantFilterProductId !== "all" &&
+        variant.productId !== variantFilterProductId
+      ) {
         return false;
       }
       if (variantFilterStock === "in-stock" && variant.stockQty <= 0) {
@@ -354,12 +393,12 @@ export default function ProductsPage() {
           return;
         }
 
-        const productsPayload = await readJsonResponse<{ products?: Product[] }>(
-          productsResponse,
-        );
-        const variantsPayload = await readJsonResponse<{ variants?: Variant[] }>(
-          variantsResponse,
-        );
+        const productsPayload = await readJsonResponse<{
+          products?: Product[];
+        }>(productsResponse);
+        const variantsPayload = await readJsonResponse<{
+          variants?: Variant[];
+        }>(variantsResponse);
 
         if (!cancelled) {
           setProducts(productsPayload?.products ?? []);
@@ -513,9 +552,10 @@ export default function ProductsPage() {
       }),
     });
 
-    const payload = await readJsonResponse<{ error?: string; createdCount?: number }>(
-      response,
-    );
+    const payload = await readJsonResponse<{
+      error?: string;
+      createdCount?: number;
+    }>(response);
 
     if (!response.ok) {
       toast.error(payload?.error ?? "Variant create failed.");
@@ -581,6 +621,91 @@ export default function ProductsPage() {
     await loadData();
   }
 
+  function openVariantUpdateModal(variant: Variant) {
+    setUpdatingVariant(variant);
+    setUpdateSellingPriceInput(String(variant.sellingPrice));
+    setUpdateSellingPriceError(null);
+    setIsUpdateModalOpen(true);
+  }
+
+  function closeVariantUpdateModal() {
+    setIsUpdateModalOpen(false);
+    setUpdatingVariant(null);
+    setUpdateSellingPriceInput("");
+    setUpdateSellingPriceError(null);
+  }
+
+  async function requestVariantUpdate() {
+    if (!updatingVariant) {
+      return;
+    }
+
+    const nextSellingPrice = Number(updateSellingPriceInput);
+
+    if (!Number.isFinite(nextSellingPrice) || nextSellingPrice < 0) {
+      setUpdateSellingPriceError("Enter a valid selling price.");
+      return;
+    }
+
+    const response = await fetch("/api/variants", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variantId: updatingVariant.id,
+        sellingPrice: nextSellingPrice,
+      }),
+    });
+
+    const payload = await readJsonResponse<{ error?: string; status?: string }>(
+      response,
+    );
+
+    if (!response.ok) {
+      toast.error(payload?.error ?? "Variant update request failed.");
+      return;
+    }
+
+    closeVariantUpdateModal();
+
+    if (payload?.status === "updated") {
+      toast.success("Variant updated.");
+    } else {
+      toast.success("Variant update request submitted for partner review.");
+    }
+
+    await loadData();
+  }
+
+  async function reviewUpdateVariant(
+    variantId: string,
+    decision: "approved" | "rejected",
+  ) {
+    const response = await fetch("/api/variants", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestType: "update", variantId, decision }),
+    });
+
+    const payload = await readJsonResponse<{ error?: string; status?: string }>(
+      response,
+    );
+
+    if (!response.ok) {
+      toast.error(payload?.error ?? "Variant update review failed.");
+      return;
+    }
+
+    if (payload?.status === "approved") {
+      toast.success("Variant update approved and applied.");
+    } else if (payload?.status === "rejected") {
+      toast.success("Variant update rejected.");
+    } else {
+      toast.success("Variant update review recorded.");
+    }
+
+    await loadData();
+  }
+
   const productStartIndex =
     filteredProducts.length === 0
       ? 0
@@ -588,14 +713,20 @@ export default function ProductsPage() {
   const productEndIndex =
     filteredProducts.length === 0
       ? 0
-      : Math.min(currentProductPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+      : Math.min(
+          currentProductPage * PRODUCTS_PER_PAGE,
+          filteredProducts.length,
+        );
 
   return (
     <div className="space-y-6">
       <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-[var(--stroke-soft)]">
-        <h2 className="text-2xl font-semibold tracking-tight">Product catalog</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          Product catalog
+        </h2>
         <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
-          Create products and add color variants with multiple sizes in one action.
+          Create products and add color variants with multiple sizes in one
+          action.
         </p>
       </div>
 
@@ -606,131 +737,157 @@ export default function ProductsPage() {
           </h3>
 
           <div className="mt-4 space-y-4">
+            <div className="relative">
+              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+                Product name
+              </label>
+              <input
+                className="field"
+                placeholder="Product name"
+                value={productForm.name}
+                onBlur={() => {
+                  if (ignoreNextNameBlurRef.current) {
+                    ignoreNextNameBlurRef.current = false;
+                    return;
+                  }
+                  window.setTimeout(() => setIsNameDropdownOpen(false), 120);
+                }}
+                onChange={(event) => {
+                  setProductForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }));
+                  setProductErrors((current) => ({
+                    ...current,
+                    name: undefined,
+                  }));
+                  setIsNameDropdownOpen(true);
+                }}
+                onFocus={() => setIsNameDropdownOpen(true)}
+              />
+              {isNameDropdownOpen && filteredNameSuggestions.length > 0 ? (
+                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
+                  {filteredNameSuggestions.map((name) => (
+                    <button
+                      key={name}
+                      className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        ignoreNextNameBlurRef.current = true;
+                        setProductForm((current) => ({ ...current, name }));
+                        setProductErrors((current) => ({
+                          ...current,
+                          name: undefined,
+                        }));
+                        setIsNameDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {productErrors.name ? (
+                <p className="mt-2 text-sm text-red-600">
+                  {productErrors.name}
+                </p>
+              ) : null}
+            </div>
 
-          <div className="relative">
-            <label className="mb-1 block text-sm text-[var(--text-secondary)]">
-              Product name
-            </label>
-            <input
-              className="field"
-              placeholder="Product name"
-              value={productForm.name}
-              onBlur={() => {
-                if (ignoreNextNameBlurRef.current) {
-                  ignoreNextNameBlurRef.current = false;
-                  return;
+            <div className="relative">
+              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+                Category
+              </label>
+              <input
+                className="field"
+                placeholder="Category"
+                value={productForm.category}
+                onBlur={() => {
+                  if (ignoreNextCategoryBlurRef.current) {
+                    ignoreNextCategoryBlurRef.current = false;
+                    return;
+                  }
+                  window.setTimeout(
+                    () => setIsCategoryDropdownOpen(false),
+                    120,
+                  );
+                }}
+                onChange={(event) => {
+                  setProductForm((current) => ({
+                    ...current,
+                    category: event.target.value,
+                  }));
+                  setProductErrors((current) => ({
+                    ...current,
+                    category: undefined,
+                  }));
+                  setIsCategoryDropdownOpen(true);
+                }}
+                onFocus={() => setIsCategoryDropdownOpen(true)}
+              />
+              {isCategoryDropdownOpen &&
+              filteredCategorySuggestions.length > 0 ? (
+                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
+                  {filteredCategorySuggestions.map((category) => (
+                    <button
+                      key={category}
+                      className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        ignoreNextCategoryBlurRef.current = true;
+                        setProductForm((current) => ({ ...current, category }));
+                        setProductErrors((current) => ({
+                          ...current,
+                          category: undefined,
+                        }));
+                        setIsCategoryDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {productErrors.category ? (
+                <p className="mt-2 text-sm text-red-600">
+                  {productErrors.category}
+                </p>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+                Description
+              </label>
+              <textarea
+                className="field min-h-28"
+                placeholder="Description"
+                value={productForm.description}
+                onChange={(event) =>
+                  setProductForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
                 }
-                window.setTimeout(() => setIsNameDropdownOpen(false), 120);
-              }}
-              onChange={(event) => {
-                setProductForm((current) => ({ ...current, name: event.target.value }));
-                setProductErrors((current) => ({ ...current, name: undefined }));
-                setIsNameDropdownOpen(true);
-              }}
-              onFocus={() => setIsNameDropdownOpen(true)}
-            />
-            {isNameDropdownOpen && filteredNameSuggestions.length > 0 ? (
-              <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                {filteredNameSuggestions.map((name) => (
-                  <button
-                    key={name}
-                    className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      ignoreNextNameBlurRef.current = true;
-                      setProductForm((current) => ({ ...current, name }));
-                      setProductErrors((current) => ({ ...current, name: undefined }));
-                      setIsNameDropdownOpen(false);
-                    }}
-                    type="button"
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {productErrors.name ? (
-              <p className="mt-2 text-sm text-red-600">{productErrors.name}</p>
-            ) : null}
-          </div>
+              />
+            </div>
 
-          <div className="relative">
-            <label className="mb-1 block text-sm text-[var(--text-secondary)]">Category</label>
-            <input
-              className="field"
-              placeholder="Category"
-              value={productForm.category}
-              onBlur={() => {
-                if (ignoreNextCategoryBlurRef.current) {
-                  ignoreNextCategoryBlurRef.current = false;
-                  return;
-                }
-                window.setTimeout(() => setIsCategoryDropdownOpen(false), 120);
-              }}
-              onChange={(event) => {
-                setProductForm((current) => ({
-                  ...current,
-                  category: event.target.value,
-                }));
-                setProductErrors((current) => ({ ...current, category: undefined }));
-                setIsCategoryDropdownOpen(true);
-              }}
-              onFocus={() => setIsCategoryDropdownOpen(true)}
-            />
-            {isCategoryDropdownOpen && filteredCategorySuggestions.length > 0 ? (
-              <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                {filteredCategorySuggestions.map((category) => (
-                  <button
-                    key={category}
-                    className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      ignoreNextCategoryBlurRef.current = true;
-                      setProductForm((current) => ({ ...current, category }));
-                      setProductErrors((current) => ({ ...current, category: undefined }));
-                      setIsCategoryDropdownOpen(false);
-                    }}
-                    type="button"
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {productErrors.category ? (
-              <p className="mt-2 text-sm text-red-600">{productErrors.category}</p>
-            ) : null}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm text-[var(--text-secondary)]">
-              Description
-            </label>
-            <textarea
-              className="field min-h-28"
-              placeholder="Description"
-              value={productForm.description}
-              onChange={(event) =>
-                setProductForm((current) => ({
-                  ...current,
-                  description: event.target.value,
-                }))
-              }
-            />
-          </div>
-
-          <button
-            className="btn-primary w-full sm:w-auto"
-            onClick={submitProduct}
-            type="button"
-          >
-            Create product
-          </button>
+            <button
+              className="btn-primary w-full sm:w-auto"
+              onClick={submitProduct}
+              type="button"
+            >
+              Create product
+            </button>
           </div>
         </section>
 
         <section className="rounded-[1.8rem] bg-[var(--surface-accent)] p-6 text-white lg:mt-4">
-          <h3 className="text-xl font-semibold tracking-tight">Create variant</h3>
+          <h3 className="text-xl font-semibold tracking-tight">
+            Create variant
+          </h3>
 
           <div className="mt-4 space-y-4">
             <label className="mb-1 block text-sm text-white/80">Product</label>
@@ -760,101 +917,122 @@ export default function ProductsPage() {
               ))}
             </select>
             {variantErrors.productId ? (
-              <p className="mt-2 text-sm text-red-200">{variantErrors.productId}</p>
+              <p className="mt-2 text-sm text-red-200">
+                {variantErrors.productId}
+              </p>
             ) : null}
 
-          <div className="relative">
-            <label className="mb-1 block text-sm text-white/80">Color</label>
-            <input
-              className="field text-[var(--text-primary)]"
-              placeholder="Color"
-              value={variantForm.color}
-              onBlur={() => {
-                if (ignoreNextColorBlurRef.current) {
-                  ignoreNextColorBlurRef.current = false;
-                  return;
-                }
-                window.setTimeout(() => setIsColorDropdownOpen(false), 120);
-              }}
-              onChange={(event) => {
-                setVariantForm((current) => ({ ...current, color: event.target.value }));
-                setVariantErrors((current) => ({ ...current, color: undefined }));
-                setIsColorDropdownOpen(true);
-              }}
-              onFocus={() => setIsColorDropdownOpen(true)}
-            />
-            {isColorDropdownOpen && filteredColorSuggestions.length > 0 ? (
-              <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                {filteredColorSuggestions.map((color) => (
-                  <button
-                    key={color}
-                    className="rounded-xl px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-(--surface-accent-soft)"
-                    onPointerDown={(event) => {
-                      event.preventDefault();
-                      ignoreNextColorBlurRef.current = true;
-                      setVariantForm((current) => ({ ...current, color }));
-                      setVariantErrors((current) => ({ ...current, color: undefined }));
-                      setIsColorDropdownOpen(false);
-                    }}
-                    type="button"
-                  >
-                    {color}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {variantErrors.color ? (
-              <p className="mt-2 text-sm text-red-200">{variantErrors.color}</p>
-            ) : null}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm text-white/80">
-                Sizes (comma separated)
-              </label>
+            <div className="relative">
+              <label className="mb-1 block text-sm text-white/80">Color</label>
               <input
                 className="field text-[var(--text-primary)]"
-                placeholder="S, M, L"
-                value={variantForm.sizesText}
-                onChange={(event) => {
-                  setVariantForm((current) => ({
-                    ...current,
-                    sizesText: event.target.value,
-                  }));
-                  setVariantErrors((current) => ({ ...current, sizes: undefined }));
+                placeholder="Color"
+                value={variantForm.color}
+                onBlur={() => {
+                  if (ignoreNextColorBlurRef.current) {
+                    ignoreNextColorBlurRef.current = false;
+                    return;
+                  }
+                  window.setTimeout(() => setIsColorDropdownOpen(false), 120);
                 }}
-              />
-              {variantErrors.sizes ? (
-                <p className="mt-2 text-sm text-red-200">{variantErrors.sizes}</p>
-              ) : null}
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm text-white/80">Selling price</label>
-              <input
-                className="field text-[var(--text-primary)]"
-                type="number"
-                min={0}
-                placeholder="Selling price"
-                value={variantForm.sellingPrice}
                 onChange={(event) => {
                   setVariantForm((current) => ({
                     ...current,
-                    sellingPrice: Number(event.target.value) || 0,
+                    color: event.target.value,
                   }));
                   setVariantErrors((current) => ({
                     ...current,
-                    sellingPrice: undefined,
+                    color: undefined,
                   }));
+                  setIsColorDropdownOpen(true);
                 }}
+                onFocus={() => setIsColorDropdownOpen(true)}
               />
-              {variantErrors.sellingPrice ? (
-                <p className="mt-2 text-sm text-red-200">{variantErrors.sellingPrice}</p>
+              {isColorDropdownOpen && filteredColorSuggestions.length > 0 ? (
+                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
+                  {filteredColorSuggestions.map((color) => (
+                    <button
+                      key={color}
+                      className="rounded-xl px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-(--surface-accent-soft)"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        ignoreNextColorBlurRef.current = true;
+                        setVariantForm((current) => ({ ...current, color }));
+                        setVariantErrors((current) => ({
+                          ...current,
+                          color: undefined,
+                        }));
+                        setIsColorDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {color}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {variantErrors.color ? (
+                <p className="mt-2 text-sm text-red-200">
+                  {variantErrors.color}
+                </p>
               ) : null}
             </div>
-          </div>
 
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm text-white/80">
+                  Sizes (comma separated)
+                </label>
+                <input
+                  className="field text-[var(--text-primary)]"
+                  placeholder="S, M, L"
+                  value={variantForm.sizesText}
+                  onChange={(event) => {
+                    setVariantForm((current) => ({
+                      ...current,
+                      sizesText: event.target.value,
+                    }));
+                    setVariantErrors((current) => ({
+                      ...current,
+                      sizes: undefined,
+                    }));
+                  }}
+                />
+                {variantErrors.sizes ? (
+                  <p className="mt-2 text-sm text-red-200">
+                    {variantErrors.sizes}
+                  </p>
+                ) : null}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/80">
+                  Selling price
+                </label>
+                <input
+                  className="field text-[var(--text-primary)]"
+                  type="number"
+                  min={0}
+                  placeholder="Selling price"
+                  value={variantForm.sellingPrice}
+                  onChange={(event) => {
+                    setVariantForm((current) => ({
+                      ...current,
+                      sellingPrice: Number(event.target.value) || 0,
+                    }));
+                    setVariantErrors((current) => ({
+                      ...current,
+                      sellingPrice: undefined,
+                    }));
+                  }}
+                />
+                {variantErrors.sellingPrice ? (
+                  <p className="mt-2 text-sm text-red-200">
+                    {variantErrors.sellingPrice}
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <button
@@ -867,9 +1045,11 @@ export default function ProductsPage() {
         </section>
       </div>
 
-      <section className="space-y-6 rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-[var(--stroke-soft)]">
+      <section className="space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-[var(--stroke-soft)] sm:p-6">
         <div className="space-y-3">
-          <h3 className="text-xl font-semibold tracking-tight">Catalog records</h3>
+          <h3 className="text-xl font-semibold tracking-tight">
+            Catalog records
+          </h3>
           <div className="flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-2xl bg-(--surface-accent-soft) p-1">
               <button
@@ -986,42 +1166,157 @@ export default function ProductsPage() {
                 No products matched your filters.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-[var(--stroke-soft)]">
+              <>
+                <div className="grid gap-3 md:hidden">
+                  {paginatedProducts.map((product) => {
+                    const stock = productStockById.get(product.id) ?? 0;
+                    const deleteRequest = product.deleteRequest;
+                    const isDeletePending = deleteRequest?.status === "pending";
+                    const showProductRequestButton = !isDeletePending;
+
+                    return (
+                      <article
+                        key={product.id}
+                        className="rounded-2xl border border-[var(--stroke-soft)] bg-white/90 p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-base font-semibold text-[var(--text-primary)]">
+                              {product.name}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                              {product.category}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+                            Stock {stock}
+                          </span>
+                        </div>
+
+                        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                          {product.description?.trim() || "No description"}
+                        </p>
+
+                        <div className="mt-3">
+                          {deleteRequest?.status && deleteRequest.status !== "none" ? (
+                            <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
+                              <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
+                                {deleteRequest.status} ({deleteRequest.approvalCount}/
+                                {deleteRequest.requiredApprovalCount})
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[var(--text-secondary)]">No request</span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {showProductRequestButton ? (
+                            <button
+                              className="btn-secondary w-full"
+                              disabled={stock > 0}
+                              title={stock > 0 ? "Can only delete when stock is 0" : ""}
+                              onClick={() => void deleteProduct(product.id)}
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          ) : deleteRequest?.canReview ? (
+                            <>
+                              <button
+                                className="btn-primary flex-1"
+                                onClick={() =>
+                                  void reviewDeleteProduct(product.id, "approved")
+                                }
+                                type="button"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="btn-secondary flex-1"
+                                onClick={() =>
+                                  void reviewDeleteProduct(product.id, "rejected")
+                                }
+                                type="button"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-[var(--text-secondary)]">Pending</span>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden overflow-x-auto rounded-2xl border border-[var(--stroke-soft)] md:block">
                 <table className="w-full text-sm">
                   <thead className="border-b border-[var(--stroke-soft)] bg-[var(--surface-accent-soft)]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Product Name</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Category</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Description</th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">Stock</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Status</th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">Action</th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Product Name
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Category
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Description
+                      </th>
+                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
+                        Stock
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--stroke-soft)]">
                     {paginatedProducts.map((product) => {
                       const stock = productStockById.get(product.id) ?? 0;
                       const deleteRequest = product.deleteRequest;
-                      const isDeletePending = deleteRequest?.status === "pending";
+                      const isDeletePending =
+                        deleteRequest?.status === "pending";
                       const showProductRequestButton = !isDeletePending;
 
                       return (
-                        <tr key={product.id} className="hover:bg-[var(--surface-accent-soft)]/50 transition">
-                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{product.name}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">{product.category}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)] max-w-xs truncate" title={product.description?.trim()}>
+                        <tr
+                          key={product.id}
+                          className="hover:bg-[var(--surface-accent-soft)]/50 transition"
+                        >
+                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
+                            {product.name}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-secondary)]">
+                            {product.category}
+                          </td>
+                          <td
+                            className="px-4 py-3 text-[var(--text-secondary)] max-w-xs truncate"
+                            title={product.description?.trim()}
+                          >
                             {product.description?.trim() || "—"}
                           </td>
-                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">{stock}</td>
+                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">
+                            {stock}
+                          </td>
                           <td className="px-4 py-3">
-                            {deleteRequest?.status && deleteRequest.status !== "none" ? (
+                            {deleteRequest?.status &&
+                            deleteRequest.status !== "none" ? (
                               <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
                                 <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                  {deleteRequest.status} ({deleteRequest.approvalCount}/{deleteRequest.requiredApprovalCount})
+                                  {deleteRequest.status} (
+                                  {deleteRequest.approvalCount}/
+                                  {deleteRequest.requiredApprovalCount})
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">—</span>
+                              <span className="text-xs text-[var(--text-secondary)]">
+                                —
+                              </span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -1029,7 +1324,11 @@ export default function ProductsPage() {
                               <button
                                 className="btn-secondary text-xs py-1 px-2"
                                 disabled={stock > 0}
-                                title={stock > 0 ? "Can only delete when stock is 0" : ""}
+                                title={
+                                  stock > 0
+                                    ? "Can only delete when stock is 0"
+                                    : ""
+                                }
                                 onClick={() => void deleteProduct(product.id)}
                                 type="button"
                               >
@@ -1039,21 +1338,33 @@ export default function ProductsPage() {
                               <div className="flex gap-1 justify-center flex-wrap">
                                 <button
                                   className="btn-primary text-xs py-1 px-2"
-                                  onClick={() => void reviewDeleteProduct(product.id, "approved")}
+                                  onClick={() =>
+                                    void reviewDeleteProduct(
+                                      product.id,
+                                      "approved",
+                                    )
+                                  }
                                   type="button"
                                 >
                                   Approve
                                 </button>
                                 <button
                                   className="btn-secondary text-xs py-1 px-2"
-                                  onClick={() => void reviewDeleteProduct(product.id, "rejected")}
+                                  onClick={() =>
+                                    void reviewDeleteProduct(
+                                      product.id,
+                                      "rejected",
+                                    )
+                                  }
                                   type="button"
                                 >
                                   Reject
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">Pending</span>
+                              <span className="text-xs text-[var(--text-secondary)]">
+                                Pending
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -1062,17 +1373,22 @@ export default function ProductsPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--stroke-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
               <p>
-                {filteredProducts.length === 0 ? "No products" : `Showing ${productStartIndex}-${productEndIndex} of ${filteredProducts.length}`}
+                {filteredProducts.length === 0
+                  ? "No products"
+                  : `Showing ${productStartIndex}-${productEndIndex} of ${filteredProducts.length}`}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   className="btn-secondary"
                   disabled={currentProductPage === 1}
-                  onClick={() => setProductPage((current) => Math.max(current - 1, 1))}
+                  onClick={() =>
+                    setProductPage((current) => Math.max(current - 1, 1))
+                  }
                   type="button"
                 >
                   Previous
@@ -1084,7 +1400,9 @@ export default function ProductsPage() {
                   className="btn-secondary"
                   disabled={currentProductPage >= totalProductPages}
                   onClick={() =>
-                    setProductPage((current) => Math.min(current + 1, totalProductPages))
+                    setProductPage((current) =>
+                      Math.min(current + 1, totalProductPages),
+                    )
                   }
                   type="button"
                 >
@@ -1092,7 +1410,7 @@ export default function ProductsPage() {
                 </button>
               </div>
             </div>
-            </>
+          </>
         ) : (
           <div className="space-y-4">
             {showVariantFilters ? (
@@ -1164,78 +1482,342 @@ export default function ProductsPage() {
                 No live variants matched your filters.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-[var(--stroke-soft)]">
+              <>
+                <div className="grid gap-3 md:hidden">
+                  {paginatedVariants.map((variant) => {
+                    const productName =
+                      productNameById.get(variant.productId) ?? "Unknown product";
+                    const deleteRequest = variant.deleteRequest;
+                    const updateRequest = variant.updateRequest;
+                    const isDeletePending = deleteRequest?.status === "pending";
+                    const isUpdatePending =
+                      updateRequest?.status === "pending" ||
+                      (updateRequest?.status === "none" &&
+                        Boolean(updateRequest.requestedById));
+                    const showVariantRequestButton = !isDeletePending;
+
+                    return (
+                      <article
+                        key={variant.id}
+                        className="rounded-2xl border border-[var(--stroke-soft)] bg-white/90 p-4 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">
+                              {variant.sku}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                              {productName}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+                            Stock {variant.stockQty}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                          <p className="text-[var(--text-secondary)]">
+                            Color: <span className="font-medium text-[var(--text-primary)]">{variant.color}</span>
+                          </p>
+                          <p className="text-[var(--text-secondary)]">
+                            Size: <span className="font-medium text-[var(--text-primary)]">{variant.size}</span>
+                          </p>
+                          <p className="col-span-2 text-[var(--text-secondary)]">
+                            Price: <span className="font-semibold text-[var(--text-primary)]">{currency(variant.sellingPrice)}</span>
+                          </p>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {updateRequest?.status && updateRequest.status !== "none" ? (
+                            <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                              update {updateRequest.status} ({updateRequest.approvalCount}/
+                              {updateRequest.requiredApprovalCount})
+                            </span>
+                          ) : null}
+                          {deleteRequest?.status && deleteRequest.status !== "none" ? (
+                            <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                              delete {deleteRequest.status} ({deleteRequest.approvalCount}/
+                              {deleteRequest.requiredApprovalCount})
+                            </span>
+                          ) : null}
+                          {(!updateRequest?.status || updateRequest.status === "none") &&
+                          (!deleteRequest?.status || deleteRequest.status === "none") ? (
+                            <span className="text-xs text-[var(--text-secondary)]">No request</span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {isUpdatePending ? (
+                            updateRequest?.canReview ? (
+                              <>
+                                <button
+                                  className="btn-primary flex-1"
+                                  onClick={() =>
+                                    void reviewUpdateVariant(variant.id, "approved")
+                                  }
+                                  type="button"
+                                >
+                                  Approve update
+                                </button>
+                                <button
+                                  className="btn-secondary flex-1"
+                                  onClick={() =>
+                                    void reviewUpdateVariant(variant.id, "rejected")
+                                  }
+                                  type="button"
+                                >
+                                  Reject update
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-xs text-[var(--text-secondary)]">Update pending</span>
+                            )
+                          ) : (
+                            <button
+                              className="btn-secondary w-full"
+                              onClick={() => openVariantUpdateModal(variant)}
+                              type="button"
+                            >
+                              Request update
+                            </button>
+                          )}
+
+                          {showVariantRequestButton ? (
+                            <button
+                              className="btn-secondary w-full"
+                              disabled={variant.stockQty > 0}
+                              title={
+                                variant.stockQty > 0
+                                  ? "Can only delete when stock is 0"
+                                  : ""
+                              }
+                              onClick={() => void deleteVariant(variant.id)}
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          ) : deleteRequest?.canReview ? (
+                            <>
+                              <button
+                                className="btn-primary flex-1"
+                                onClick={() =>
+                                  void reviewDeleteVariant(variant.id, "approved")
+                                }
+                                type="button"
+                              >
+                                Approve delete
+                              </button>
+                              <button
+                                className="btn-secondary flex-1"
+                                onClick={() =>
+                                  void reviewDeleteVariant(variant.id, "rejected")
+                                }
+                                type="button"
+                              >
+                                Reject delete
+                              </button>
+                            </>
+                          ) : isDeletePending ? (
+                            <span className="text-xs text-[var(--text-secondary)]">Delete pending</span>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden overflow-x-auto rounded-2xl border border-[var(--stroke-soft)] md:block">
                 <table className="w-full text-sm">
                   <thead className="border-b border-[var(--stroke-soft)] bg-[var(--surface-accent-soft)]">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">SKU</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Product</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Color</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Size</th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">Stock</th>
-                      <th className="px-4 py-3 text-right font-semibold text-[var(--text-primary)]">Selling Price</th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">Status</th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">Action</th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        SKU
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Product
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Color
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Size
+                      </th>
+                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
+                        Stock
+                      </th>
+                      <th className="px-4 py-3 text-right font-semibold text-[var(--text-primary)]">
+                        Selling Price
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--stroke-soft)]">
                     {paginatedVariants.map((variant) => {
                       const productName =
-                        productNameById.get(variant.productId) ?? "Unknown product";
+                        productNameById.get(variant.productId) ??
+                        "Unknown product";
                       const deleteRequest = variant.deleteRequest;
-                      const isDeletePending = deleteRequest?.status === "pending";
+                      const updateRequest = variant.updateRequest;
+                      const isDeletePending =
+                        deleteRequest?.status === "pending";
+                      const isUpdatePending =
+                        updateRequest?.status === "pending" ||
+                        (updateRequest?.status === "none" &&
+                          Boolean(updateRequest.requestedById));
                       const showVariantRequestButton = !isDeletePending;
 
                       return (
-                        <tr key={variant.id} className="hover:bg-[var(--surface-accent-soft)]/50 transition">
-                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{variant.sku}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">{productName}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">{variant.color}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">{variant.size}</td>
-                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">{variant.stockQty}</td>
-                          <td className="px-4 py-3 text-right text-[var(--text-primary)] font-medium">{currency(variant.sellingPrice)}</td>
+                        <tr
+                          key={variant.id}
+                          className="hover:bg-[var(--surface-accent-soft)]/50 transition"
+                        >
+                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
+                            {variant.sku}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-secondary)]">
+                            {productName}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-secondary)]">
+                            {variant.color}
+                          </td>
+                          <td className="px-4 py-3 text-[var(--text-secondary)]">
+                            {variant.size}
+                          </td>
+                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">
+                            {variant.stockQty}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[var(--text-primary)] font-medium">
+                            {currency(variant.sellingPrice)}
+                          </td>
                           <td className="px-4 py-3">
-                            {deleteRequest?.status && deleteRequest.status !== "none" ? (
-                              <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
-                                <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                  {deleteRequest.status} ({deleteRequest.approvalCount}/{deleteRequest.requiredApprovalCount})
+                            <div className="flex flex-col gap-1">
+                              {updateRequest?.status &&
+                              updateRequest.status !== "none" ? (
+                                <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
+                                  <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
+                                    update {updateRequest.status} (
+                                    {updateRequest.approvalCount}/
+                                    {updateRequest.requiredApprovalCount})
+                                  </span>
+                                </div>
+                              ) : null}
+                              {deleteRequest?.status &&
+                              deleteRequest.status !== "none" ? (
+                                <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
+                                  <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
+                                    delete {deleteRequest.status} (
+                                    {deleteRequest.approvalCount}/
+                                    {deleteRequest.requiredApprovalCount})
+                                  </span>
+                                </div>
+                              ) : null}
+                              {(!updateRequest?.status ||
+                                updateRequest.status === "none") &&
+                              (!deleteRequest?.status ||
+                                deleteRequest.status === "none") ? (
+                                <span className="text-xs text-[var(--text-secondary)]">
+                                  —
                                 </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">—</span>
-                            )}
+                              ) : null}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {showVariantRequestButton ? (
-                              <button
-                                className="btn-secondary text-xs py-1 px-2"
-                                disabled={variant.stockQty > 0}
-                                title={variant.stockQty > 0 ? "Can only delete when stock is 0" : ""}
-                                onClick={() => void deleteVariant(variant.id)}
-                                type="button"
-                              >
-                                Delete
-                              </button>
-                            ) : deleteRequest?.canReview ? (
-                              <div className="flex gap-1 justify-center flex-wrap">
-                                <button
-                                  className="btn-primary text-xs py-1 px-2"
-                                  onClick={() => void reviewDeleteVariant(variant.id, "approved")}
-                                  type="button"
-                                >
-                                  Approve
-                                </button>
+                            <div className="flex flex-col items-center gap-2">
+                              {isUpdatePending ? (
+                                updateRequest?.canReview ? (
+                                  <div className="flex gap-1 justify-center flex-wrap">
+                                    <button
+                                      className="btn-primary text-xs py-1 px-2"
+                                      onClick={() =>
+                                        void reviewUpdateVariant(
+                                          variant.id,
+                                          "approved",
+                                        )
+                                      }
+                                      type="button"
+                                    >
+                                      Approve update
+                                    </button>
+                                    <button
+                                      className="btn-secondary text-xs py-1 px-2"
+                                      onClick={() =>
+                                        void reviewUpdateVariant(
+                                          variant.id,
+                                          "rejected",
+                                        )
+                                      }
+                                      type="button"
+                                    >
+                                      Reject update
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-[var(--text-secondary)]">
+                                    Update pending
+                                  </span>
+                                )
+                              ) : (
                                 <button
                                   className="btn-secondary text-xs py-1 px-2"
-                                  onClick={() => void reviewDeleteVariant(variant.id, "rejected")}
+                                  onClick={() => openVariantUpdateModal(variant)}
                                   type="button"
                                 >
-                                  Reject
+                                  Request update
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">Pending</span>
-                            )}
+                              )}
+
+                              {showVariantRequestButton ? (
+                                <button
+                                  className="btn-secondary text-xs py-1 px-2"
+                                  disabled={variant.stockQty > 0}
+                                  title={
+                                    variant.stockQty > 0
+                                      ? "Can only delete when stock is 0"
+                                      : ""
+                                  }
+                                  onClick={() => void deleteVariant(variant.id)}
+                                  type="button"
+                                >
+                                  Delete
+                                </button>
+                              ) : deleteRequest?.canReview ? (
+                                <div className="flex gap-1 justify-center flex-wrap">
+                                  <button
+                                    className="btn-primary text-xs py-1 px-2"
+                                    onClick={() =>
+                                      void reviewDeleteVariant(
+                                        variant.id,
+                                        "approved",
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    Approve delete
+                                  </button>
+                                  <button
+                                    className="btn-secondary text-xs py-1 px-2"
+                                    onClick={() =>
+                                      void reviewDeleteVariant(
+                                        variant.id,
+                                        "rejected",
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    Reject delete
+                                  </button>
+                                </div>
+                              ) : isDeletePending ? (
+                                <span className="text-xs text-[var(--text-secondary)]">
+                                  Delete pending
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1243,17 +1825,22 @@ export default function ProductsPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--stroke-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
               <p>
-                {filteredVariants.length === 0 ? "No variants" : `Showing ${filteredVariants.length === 0 ? 0 : (currentVariantPage - 1) * PRODUCTS_PER_PAGE + 1}-${Math.min(currentVariantPage * PRODUCTS_PER_PAGE, filteredVariants.length)} of ${filteredVariants.length}`}
+                {filteredVariants.length === 0
+                  ? "No variants"
+                  : `Showing ${filteredVariants.length === 0 ? 0 : (currentVariantPage - 1) * PRODUCTS_PER_PAGE + 1}-${Math.min(currentVariantPage * PRODUCTS_PER_PAGE, filteredVariants.length)} of ${filteredVariants.length}`}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   className="btn-secondary"
                   disabled={currentVariantPage === 1}
-                  onClick={() => setVariantPage((current) => Math.max(current - 1, 1))}
+                  onClick={() =>
+                    setVariantPage((current) => Math.max(current - 1, 1))
+                  }
                   type="button"
                 >
                   Previous
@@ -1265,7 +1852,9 @@ export default function ProductsPage() {
                   className="btn-secondary"
                   disabled={currentVariantPage >= totalVariantPages}
                   onClick={() =>
-                    setVariantPage((current) => Math.min(current + 1, totalVariantPages))
+                    setVariantPage((current) =>
+                      Math.min(current + 1, totalVariantPages),
+                    )
                   }
                   type="button"
                 >
@@ -1276,6 +1865,55 @@ export default function ProductsPage() {
           </div>
         )}
       </section>
+
+      {isUpdateModalOpen && updatingVariant ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-[1.4rem] bg-white p-6 shadow-2xl ring-1 ring-[var(--stroke-soft)]">
+            <h4 className="text-lg font-semibold text-[var(--text-primary)]">
+              Request variant update
+            </h4>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">
+              {updatingVariant.sku} - {updatingVariant.color} / {updatingVariant.size}
+            </p>
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-sm text-[var(--text-secondary)]">
+                New selling price
+              </label>
+              <input
+                className="field"
+                type="number"
+                min={0}
+                value={updateSellingPriceInput}
+                onChange={(event) => {
+                  setUpdateSellingPriceInput(event.target.value);
+                  setUpdateSellingPriceError(null);
+                }}
+              />
+              {updateSellingPriceError ? (
+                <p className="text-sm text-red-600">{updateSellingPriceError}</p>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                className="btn-secondary"
+                onClick={closeVariantUpdateModal}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => void requestVariantUpdate()}
+                type="button"
+              >
+                Submit update request
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

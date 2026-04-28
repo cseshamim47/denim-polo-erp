@@ -27,6 +27,7 @@ export interface Sale {
   discountTotal: unknown;
   grandTotal: unknown;
   paymentMethod: string;
+  note?: string | null;
   soldBy: Types.ObjectId;
   saleDate: Date;
   status: SaleStatus;
@@ -87,6 +88,7 @@ const saleSchema = new Schema<Sale>(
     },
     grandTotal: { type: Schema.Types.Decimal128, required: true },
     paymentMethod: { type: String, required: true, trim: true },
+    note: { type: String, default: null },
     soldBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     saleDate: { type: Date, required: true },
     status: {

@@ -29,6 +29,19 @@ const reviewDeleteVariantSchema = z.object({
   comment: z.string().trim().optional(),
 });
 
+const requestUpdateVariantSchema = z.object({
+  variantId: z.string().trim().min(1),
+  sellingPrice: z.number().nonnegative().optional(),
+  comment: z.string().trim().optional(),
+});
+
+const reviewUpdateVariantSchema = z.object({
+  requestType: z.literal("update"),
+  variantId: z.string().trim().min(1),
+  decision: z.enum(["approved", "rejected"]),
+  comment: z.string().trim().optional(),
+});
+
 function getConfiguredPartnerCount() {
   return (process.env.PARTNER_EMAILS ?? "")
     .split(",")
@@ -39,10 +52,64 @@ function getConfiguredPartnerCount() {
 function normalizeDeleteRequestStatus(input: {
   status?: string | null;
   requestedById?: string | null;
+  requestedAt?: Date | null;
+  approvalCount?: number;
+  requiredApprovalCountSnapshot?: number;
   isActive: boolean;
 }) {
   if (!input.isActive) {
     return "approved" as const;
+  }
+
+  if (
+    input.status === "none" &&
+    (input.requestedById ||
+      input.requestedAt ||
+      (input.approvalCount ?? 0) > 0 ||
+      (input.requiredApprovalCountSnapshot ?? 0) > 0)
+  ) {
+    return "pending" as const;
+  }
+
+  if (
+    input.status === "none" ||
+    input.status === "pending" ||
+    input.status === "approved" ||
+    input.status === "rejected"
+  ) {
+    return input.status;
+  }
+
+  if (input.requestedById) {
+    return "pending" as const;
+  }
+
+  return "none" as const;
+}
+
+function normalizeUpdateRequestStatus(input: {
+  status?: string | null;
+  requestedById?: string | null;
+  requestedAt?: Date | null;
+  approvalCount?: number;
+  requiredApprovalCountSnapshot?: number;
+  hasProposedSellingPrice?: boolean;
+  finalizedAt?: Date | null;
+  isActive: boolean;
+}) {
+  if (!input.isActive) {
+    return "approved" as const;
+  }
+
+  if (
+    input.status === "none" &&
+    (input.requestedById ||
+      input.requestedAt ||
+      (input.approvalCount ?? 0) > 0 ||
+      (input.requiredApprovalCountSnapshot ?? 0) > 0 ||
+      (input.hasProposedSellingPrice && !input.finalizedAt))
+  ) {
+    return "pending" as const;
   }
 
   if (
@@ -78,8 +145,13 @@ function getFallbackRequiredApprovalCount(options: {
   );
 }
 
-async function getFallbackReviewerIds(requestedById: string | null | undefined) {
-  const activePartners = await UserModel.find({ role: "partner", isActive: true })
+async function getFallbackReviewerIds(
+  requestedById: string | null | undefined,
+) {
+  const activePartners = await UserModel.find({
+    role: "partner",
+    isActive: true,
+  })
     .select({ _id: 1 })
     .lean();
 
@@ -130,6 +202,21 @@ export async function GET(request: Request) {
       const normalizedStatus = normalizeDeleteRequestStatus({
         status: variant.deleteRequestStatus,
         requestedById: variant.deleteRequestedBy?.toString(),
+        requestedAt: variant.deleteRequestedAt,
+        approvalCount: variant.deleteApprovals?.length ?? 0,
+        requiredApprovalCountSnapshot:
+          variant.deleteRequiredApprovalCountSnapshot ?? 0,
+        isActive: variant.isActive,
+      });
+      const normalizedUpdateStatus = normalizeUpdateRequestStatus({
+        status: variant.updateRequestStatus,
+        requestedById: variant.updateRequestedBy?.toString(),
+        requestedAt: variant.updateRequestedAt,
+        approvalCount: variant.updateApprovals?.length ?? 0,
+        requiredApprovalCountSnapshot:
+          variant.updateRequiredApprovalCountSnapshot ?? 0,
+        hasProposedSellingPrice: variant.updateProposedSellingPrice != null,
+        finalizedAt: variant.updateFinalizedAt,
         isActive: variant.isActive,
       });
 
@@ -181,6 +268,51 @@ export async function GET(request: Request) {
             decidedAt: approval.decidedAt.toISOString(),
           })),
         },
+        updateRequest: {
+          status: normalizedUpdateStatus,
+          requestedById: variant.updateRequestedBy?.toString() ?? null,
+          requestedByName: variant.updateRequestedBy
+            ? (partnerNameById.get(variant.updateRequestedBy.toString()) ??
+              "Unknown partner")
+            : null,
+          requestedAt: variant.updateRequestedAt?.toISOString() ?? null,
+          requiredApprovalCount: getFallbackRequiredApprovalCount({
+            requestedById: variant.updateRequestedBy?.toString(),
+            configuredPartnerCount,
+            activePartnerCount: activePartners.length,
+          }),
+          approvalCount: variant.updateApprovals?.length ?? 0,
+          canReview:
+            normalizedUpdateStatus === "pending" &&
+            variant.updateRequestedBy?.toString() !== session.user.id &&
+            ((variant.updateRequiredApproverIdsSnapshot ?? []).length > 0
+              ? (variant.updateRequiredApproverIdsSnapshot ?? []).some(
+                  (approverId) => approverId.toString() === session.user.id,
+                )
+              : activePartners.some(
+                  (partner) => partner._id.toString() === session.user.id,
+                )) &&
+            !(variant.updateApprovals ?? []).some(
+              (approval) => approval.partnerId.toString() === session.user.id,
+            ),
+          proposal: {
+            color: variant.updateProposedColor ?? null,
+            size: variant.updateProposedSize ?? null,
+            sellingPrice:
+              variant.updateProposedSellingPrice == null
+                ? null
+                : decimalToNumber(variant.updateProposedSellingPrice),
+          },
+          approvals: (variant.updateApprovals ?? []).map((approval) => ({
+            partnerId: approval.partnerId.toString(),
+            partnerName:
+              partnerNameById.get(approval.partnerId.toString()) ??
+              "Unknown partner",
+            decision: approval.decision,
+            comment: approval.comment ?? null,
+            decidedAt: approval.decidedAt.toISOString(),
+          })),
+        },
       };
     }),
   });
@@ -202,11 +334,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const inputSizes = parsed.data.sizes ??
-    (parsed.data.size ? [parsed.data.size] : []);
+  const inputSizes =
+    parsed.data.sizes ?? (parsed.data.size ? [parsed.data.size] : []);
 
   const normalizedSizes = Array.from(
-    new Set(inputSizes.map((size) => size.trim().toUpperCase()).filter(Boolean)),
+    new Set(
+      inputSizes.map((size) => size.trim().toUpperCase()).filter(Boolean),
+    ),
   );
 
   if (normalizedSizes.length === 0) {
@@ -312,6 +446,9 @@ export async function DELETE(request: Request) {
   const normalizedStatus = normalizeDeleteRequestStatus({
     status: variant.deleteRequestStatus,
     requestedById: variant.deleteRequestedBy?.toString(),
+    requestedAt: variant.deleteRequestedAt,
+    approvalCount: variant.deleteApprovals?.length ?? 0,
+    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
     isActive: variant.isActive,
   });
 
@@ -361,6 +498,130 @@ export async function DELETE(request: Request) {
   });
 }
 
+export async function PUT(request: Request) {
+  const session = await getRequiredSession(["partner"]);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const parsed = requestUpdateVariantSchema.safeParse(await request.json());
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  await connectToDatabase();
+
+  const actorId = new Types.ObjectId(session.user.id);
+  const variant = await VariantModel.findById(parsed.data.variantId);
+
+  if (!variant || !variant.isActive) {
+    return NextResponse.json({ error: "Variant not found" }, { status: 404 });
+  }
+
+  const normalizedDeleteStatus = normalizeDeleteRequestStatus({
+    status: variant.deleteRequestStatus,
+    requestedById: variant.deleteRequestedBy?.toString(),
+    requestedAt: variant.deleteRequestedAt,
+    approvalCount: variant.deleteApprovals?.length ?? 0,
+    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
+    isActive: variant.isActive,
+  });
+
+  if (normalizedDeleteStatus === "pending") {
+    return NextResponse.json(
+      { error: "Cannot request update while delete request is pending." },
+      { status: 409 },
+    );
+  }
+
+  const normalizedUpdateStatus = normalizeUpdateRequestStatus({
+    status: variant.updateRequestStatus,
+    requestedById: variant.updateRequestedBy?.toString(),
+    requestedAt: variant.updateRequestedAt,
+    approvalCount: variant.updateApprovals?.length ?? 0,
+    requiredApprovalCountSnapshot: variant.updateRequiredApprovalCountSnapshot ?? 0,
+    hasProposedSellingPrice: variant.updateProposedSellingPrice != null,
+    finalizedAt: variant.updateFinalizedAt,
+    isActive: variant.isActive,
+  });
+
+  if (normalizedUpdateStatus === "pending") {
+    return NextResponse.json(
+      { error: "Update request already pending review." },
+      { status: 409 },
+    );
+  }
+
+  const proposedSellingPrice =
+    parsed.data.sellingPrice ?? decimalToNumber(variant.sellingPrice);
+
+  const hasChanges =
+    proposedSellingPrice !== decimalToNumber(variant.sellingPrice);
+
+  if (!hasChanges) {
+    return NextResponse.json(
+      { error: "No changes detected for update request." },
+      { status: 400 },
+    );
+  }
+
+  const reviewers = await UserModel.find({
+    role: "partner",
+    isActive: true,
+    _id: { $ne: actorId },
+  })
+    .select({ _id: 1 })
+    .lean();
+
+  const requiredApproverIds = reviewers.map((reviewer) => reviewer._id);
+  const configuredPartnerCount = getConfiguredPartnerCount();
+  const requiredApprovalCountSnapshot = Math.max(
+    configuredPartnerCount > 0
+      ? configuredPartnerCount - 1
+      : requiredApproverIds.length,
+    0,
+  );
+
+  if (requiredApproverIds.length === 0 && requiredApprovalCountSnapshot === 0) {
+    variant.sellingPrice = toDecimal128(proposedSellingPrice) as never;
+    variant.updateRequestStatus = "approved";
+    variant.updateRequestedBy = actorId;
+    variant.updateRequestedAt = new Date();
+    variant.updateProposedColor = variant.color;
+    variant.updateProposedSize = variant.size;
+    variant.updateProposedSellingPrice = toDecimal128(proposedSellingPrice) as never;
+    variant.updateApprovals = [];
+    variant.updateRequiredApproverIdsSnapshot = [];
+    variant.updateRequiredApprovalCountSnapshot = 0;
+    variant.updateFinalizedAt = new Date();
+    await variant.save();
+
+    return NextResponse.json({ status: "updated" });
+  }
+
+  variant.updateRequestStatus = "pending";
+  variant.updateRequestedBy = actorId;
+  variant.updateRequestedAt = new Date();
+  variant.updateProposedColor = variant.color;
+  variant.updateProposedSize = variant.size;
+  variant.updateProposedSellingPrice = toDecimal128(proposedSellingPrice) as never;
+  variant.updateApprovals = [];
+  variant.updateRequiredApproverIdsSnapshot = requiredApproverIds;
+  variant.updateRequiredApprovalCountSnapshot = requiredApprovalCountSnapshot;
+  variant.updateFinalizedAt = null;
+  await variant.save();
+
+  return NextResponse.json({
+    status: "pending_review",
+    requiredApprovalCount: requiredApprovalCountSnapshot,
+  });
+}
+
 export async function PATCH(request: Request) {
   const session = await getRequiredSession(["partner"]);
 
@@ -368,7 +629,130 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const parsed = reviewDeleteVariantSchema.safeParse(await request.json());
+  const requestBody = await request.json();
+
+  if (requestBody?.requestType === "update") {
+    const parsedUpdate = reviewUpdateVariantSchema.safeParse(requestBody);
+
+    if (!parsedUpdate.success) {
+      return NextResponse.json(
+        { error: parsedUpdate.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    await connectToDatabase();
+
+    const actorId = new Types.ObjectId(session.user.id);
+    const variant = await VariantModel.findById(parsedUpdate.data.variantId);
+
+    if (!variant || !variant.isActive) {
+      return NextResponse.json({ error: "Variant not found" }, { status: 404 });
+    }
+
+    const normalizedUpdateStatus = normalizeUpdateRequestStatus({
+      status: variant.updateRequestStatus,
+      requestedById: variant.updateRequestedBy?.toString(),
+      requestedAt: variant.updateRequestedAt,
+      approvalCount: variant.updateApprovals?.length ?? 0,
+      requiredApprovalCountSnapshot:
+        variant.updateRequiredApprovalCountSnapshot ?? 0,
+      hasProposedSellingPrice: variant.updateProposedSellingPrice != null,
+      finalizedAt: variant.updateFinalizedAt,
+      isActive: variant.isActive,
+    });
+
+    if (normalizedUpdateStatus !== "pending") {
+      return NextResponse.json(
+        { error: "Update request is not pending." },
+        { status: 400 },
+      );
+    }
+
+    if (variant.updateRequestedBy?.toString() === session.user.id) {
+      return NextResponse.json(
+        { error: "Requester cannot review own update request." },
+        { status: 400 },
+      );
+    }
+
+    const fallbackReviewerIds = await getFallbackReviewerIds(
+      variant.updateRequestedBy?.toString(),
+    );
+
+    if ((variant.updateRequiredApproverIdsSnapshot ?? []).length === 0) {
+      variant.updateRequiredApproverIdsSnapshot = fallbackReviewerIds;
+      variant.updateRequiredApprovalCountSnapshot = Math.max(
+        getConfiguredPartnerCount() > 0
+          ? getConfiguredPartnerCount() - 1
+          : fallbackReviewerIds.length,
+        0,
+      );
+    }
+
+    const canReview = (variant.updateRequiredApproverIdsSnapshot ?? []).some(
+      (approverId) => approverId.toString() === session.user.id,
+    );
+
+    if (!canReview) {
+      return NextResponse.json(
+        { error: "You are not in the required reviewers list." },
+        { status: 403 },
+      );
+    }
+
+    const alreadyReviewed = (variant.updateApprovals ?? []).some(
+      (approval) => approval.partnerId.toString() === session.user.id,
+    );
+
+    if (alreadyReviewed) {
+      return NextResponse.json(
+        { error: "You already reviewed this update request." },
+        { status: 409 },
+      );
+    }
+
+    variant.updateApprovals.push({
+      partnerId: actorId,
+      decision: parsedUpdate.data.decision,
+      comment: parsedUpdate.data.comment ?? null,
+      decidedAt: new Date(),
+    });
+
+    if (parsedUpdate.data.decision === "rejected") {
+      variant.updateRequestStatus = "rejected";
+      variant.updateFinalizedAt = new Date();
+      await variant.save();
+
+      return NextResponse.json({ status: "rejected" });
+    }
+
+    const requiredApprovalCount =
+      variant.updateRequiredApprovalCountSnapshot > 0
+        ? variant.updateRequiredApprovalCountSnapshot
+        : Math.max(
+            getConfiguredPartnerCount() > 0
+              ? getConfiguredPartnerCount() - 1
+              : fallbackReviewerIds.length,
+            0,
+          );
+
+    if (variant.updateApprovals.length >= requiredApprovalCount) {
+      if (variant.updateProposedSellingPrice != null) {
+        variant.sellingPrice = variant.updateProposedSellingPrice as never;
+      }
+      variant.updateRequestStatus = "approved";
+      variant.updateFinalizedAt = new Date();
+      await variant.save();
+
+      return NextResponse.json({ status: "approved" });
+    }
+
+    await variant.save();
+    return NextResponse.json({ status: "pending" });
+  }
+
+  const parsed = reviewDeleteVariantSchema.safeParse(requestBody);
 
   if (!parsed.success) {
     return NextResponse.json(
@@ -389,6 +773,9 @@ export async function PATCH(request: Request) {
   const normalizedStatus = normalizeDeleteRequestStatus({
     status: variant.deleteRequestStatus,
     requestedById: variant.deleteRequestedBy?.toString(),
+    requestedAt: variant.deleteRequestedAt,
+    approvalCount: variant.deleteApprovals?.length ?? 0,
+    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
     isActive: variant.isActive,
   });
 

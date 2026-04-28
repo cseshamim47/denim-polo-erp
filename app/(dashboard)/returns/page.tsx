@@ -32,7 +32,10 @@ export default function ReturnsPage() {
     async function loadSales() {
       try {
         const response = await fetch("/api/sales", { cache: "no-store" });
-        const payload = (await response.json()) as { sales?: Sale[]; error?: string };
+        const payload = (await response.json()) as {
+          sales?: Sale[];
+          error?: string;
+        };
 
         if (!response.ok) {
           toast.error(payload.error ?? "Unable to load sales right now.");

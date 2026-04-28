@@ -9,6 +9,8 @@
     "lint": "eslint",
     "seed:salesman": "node --env-file=.env scripts/seed-salesman.mjs",
     "seed:demo": "node --env-file=.env scripts/seed-demo-data.mjs",
+    "repair:variant-updates": "node --env-file=.env scripts/repair-variant-update-requests.mjs",
+    "repair:variant-updates:apply": "node --env-file=.env scripts/repair-variant-update-requests.mjs --apply",
     "test": "vitest run",
     "test:watch": "vitest"
   },

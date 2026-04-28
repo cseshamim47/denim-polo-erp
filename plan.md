@@ -1,5 +1,5 @@
 # Plan
 
-- [x] Create responsive dashboard shell with mobile hamburger drawer
-- [x] Wire shell into dashboard layout while preserving desktop sidebar
-- [x] Run lint for changed files and confirm no new issues
+- [x] Add sales API filters for history table
+- [x] Render live sales history table with filters on sales entry page
+- [x] Validate with lint for touched files

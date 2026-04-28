@@ -6,7 +6,20 @@ export type VariantDeleteRequestStatus =
   | "approved"
   | "rejected";
 
+export type VariantUpdateRequestStatus =
+  | "none"
+  | "pending"
+  | "approved"
+  | "rejected";
+
 export interface VariantDeleteApproval {
+  partnerId: Types.ObjectId;
+  decision: "approved" | "rejected";
+  decidedAt: Date;
+  comment?: string | null;
+}
+
+export interface VariantUpdateApproval {
   partnerId: Types.ObjectId;
   decision: "approved" | "rejected";
   decidedAt: Date;
@@ -31,11 +44,33 @@ export interface Variant {
   deleteRequiredApproverIdsSnapshot: Types.ObjectId[];
   deleteRequiredApprovalCountSnapshot: number;
   deleteFinalizedAt?: Date | null;
+  updateRequestStatus: VariantUpdateRequestStatus;
+  updateRequestedBy?: Types.ObjectId | null;
+  updateRequestedAt?: Date | null;
+  updateProposedColor?: string | null;
+  updateProposedSize?: string | null;
+  updateProposedSellingPrice?: unknown;
+  updateApprovals: VariantUpdateApproval[];
+  updateRequiredApproverIdsSnapshot: Types.ObjectId[];
+  updateRequiredApprovalCountSnapshot: number;
+  updateFinalizedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const variantDeleteApprovalSchema = new Schema<VariantDeleteApproval>(
+  {
+    partnerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    decision: { type: String, enum: ["approved", "rejected"], required: true },
+    decidedAt: { type: Date, required: true },
+    comment: { type: String, default: null },
+  },
+  {
+    _id: false,
+  },
+);
+
+const variantUpdateApprovalSchema = new Schema<VariantUpdateApproval>(
   {
     partnerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     decision: { type: String, enum: ["approved", "rejected"], required: true },
@@ -93,6 +128,35 @@ const variantSchema = new Schema<Variant>(
     },
     deleteRequiredApprovalCountSnapshot: { type: Number, required: true, default: 0 },
     deleteFinalizedAt: { type: Date, default: null },
+    updateRequestStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected"],
+      required: true,
+      default: "none",
+    },
+    updateRequestedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    updateRequestedAt: { type: Date, default: null },
+    updateProposedColor: { type: String, default: null },
+    updateProposedSize: { type: String, default: null },
+    updateProposedSellingPrice: {
+      type: Schema.Types.Decimal128,
+      default: null,
+    },
+    updateApprovals: { type: [variantUpdateApprovalSchema], default: [] },
+    updateRequiredApproverIdsSnapshot: {
+      type: [{ type: Schema.Types.ObjectId, ref: "User", required: true }],
+      default: [],
+    },
+    updateRequiredApprovalCountSnapshot: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    updateFinalizedAt: { type: Date, default: null },
   },
   {
     timestamps: true,
@@ -127,6 +191,40 @@ function patchVariantSchema(targetSchema: Schema) {
         default: 0,
       },
       deleteFinalizedAt: { type: Date, default: null },
+    });
+  }
+
+  if (!targetSchema.path("updateRequestStatus")) {
+    targetSchema.add({
+      updateRequestStatus: {
+        type: String,
+        enum: ["none", "pending", "approved", "rejected"],
+        required: true,
+        default: "none",
+      },
+      updateRequestedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      updateRequestedAt: { type: Date, default: null },
+      updateProposedColor: { type: String, default: null },
+      updateProposedSize: { type: String, default: null },
+      updateProposedSellingPrice: {
+        type: Schema.Types.Decimal128,
+        default: null,
+      },
+      updateApprovals: { type: [variantUpdateApprovalSchema], default: [] },
+      updateRequiredApproverIdsSnapshot: {
+        type: [{ type: Schema.Types.ObjectId, ref: "User", required: true }],
+        default: [],
+      },
+      updateRequiredApprovalCountSnapshot: {
+        type: Number,
+        required: true,
+        default: 0,
+      },
+      updateFinalizedAt: { type: Date, default: null },
     });
   }
 }

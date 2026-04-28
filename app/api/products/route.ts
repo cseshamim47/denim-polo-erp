@@ -73,8 +73,13 @@ function getFallbackRequiredApprovalCount(options: {
   );
 }
 
-async function getFallbackReviewerIds(requestedById: string | null | undefined) {
-  const activePartners = await UserModel.find({ role: "partner", isActive: true })
+async function getFallbackReviewerIds(
+  requestedById: string | null | undefined,
+) {
+  const activePartners = await UserModel.find({
+    role: "partner",
+    isActive: true,
+  })
     .select({ _id: 1 })
     .lean();
 

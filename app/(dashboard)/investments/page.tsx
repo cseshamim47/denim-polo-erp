@@ -233,7 +233,8 @@ export default function InvestmentsPage() {
               {currency(data?.balance.currentBalance ?? 0)}
             </p>
             <p className="mt-2 text-sm leading-7 text-(--text-secondary)">
-              Approved investments + completed sales - customer refunds - purchases - approved expenses.
+              Approved investments + completed sales - customer refunds -
+              purchases - approved expenses.
             </p>
           </div>
         </div>
