@@ -415,12 +415,13 @@ export default function NewPurchasePage() {
         color: matchedVariant.color,
         qty: item.qty,
         costPerUnit: item.costPerUnit,
+        additionalCost: 0,
         total: item.qty * item.costPerUnit,
       });
     }
 
     const additionalCosts = allocateAdditionalCosts(
-      resolvedItems.map((item) => ({ ...item, additionalCost: 0 })),
+      resolvedItems,
       transportCost + otherCost,
     );
 

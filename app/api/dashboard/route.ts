@@ -15,7 +15,7 @@ import VariantModel from "@/models/Variant";
 type DashboardSale = Pick<Sale, "items">;
 type DashboardSaleLine = Pick<
   SaleLine,
-  "returnedQty" | "damagedQty" | "profitPerUnitSnapshot"
+  "qty" | "returnedQty" | "damagedQty" | "profitPerUnitSnapshot"
 >;
 
 function startOfDay(date: Date) {
