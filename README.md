@@ -169,7 +169,7 @@ Verify these manually:
 - Dashboard: `/`
 - Sales entry: `/sales/new`
 - Products and pricing helper: `/products`
-- Purchases: `/purchases/new`
+- Purchases: `/purchases`
 - Expenses: `/expenses`
 - Returns: `/returns`
 - Reports and investments: `/reports`

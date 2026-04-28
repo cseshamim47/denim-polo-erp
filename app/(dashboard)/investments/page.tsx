@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type InvestmentsResponse = {
   balance: {
@@ -71,7 +72,6 @@ async function readJsonResponse<T>(response: Response) {
 
 export default function InvestmentsPage() {
   const [data, setData] = useState<InvestmentsResponse | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     page: 1,
     scope: "all",
@@ -102,19 +102,18 @@ export default function InvestmentsPage() {
     });
 
     if (!response.ok) {
-      setMessage("Unable to load investments right now.");
+      toast.error("Unable to load investments right now.");
       return;
     }
 
     const payload = await readJsonResponse<InvestmentsResponse>(response);
 
     if (!payload) {
-      setMessage("Investments response was empty.");
+      toast.error("Investments response was empty.");
       return;
     }
 
     setData(payload);
-    setMessage(null);
   }
 
   useEffect(() => {
@@ -128,7 +127,7 @@ export default function InvestmentsPage() {
       .then(async (response) => {
         if (!response.ok) {
           if (!cancelled) {
-            setMessage("Unable to load investments right now.");
+            toast.error("Unable to load investments right now.");
           }
           return;
         }
@@ -137,19 +136,18 @@ export default function InvestmentsPage() {
 
         if (!payload) {
           if (!cancelled) {
-            setMessage("Investments response was empty.");
+            toast.error("Investments response was empty.");
           }
           return;
         }
 
         if (!cancelled) {
           setData(payload);
-          setMessage(null);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setMessage("Unable to load investments right now.");
+          toast.error("Unable to load investments right now.");
         }
       });
 
@@ -159,7 +157,7 @@ export default function InvestmentsPage() {
   }, []);
 
   async function submitInvestment() {
-    setMessage("Saving investment...");
+    const loadingToastId = toast.loading("Saving investment...");
 
     const response = await fetch("/api/investments", {
       method: "POST",
@@ -168,8 +166,10 @@ export default function InvestmentsPage() {
     });
     const payload = await readJsonResponse<{ error?: string }>(response);
 
+    toast.dismiss(loadingToastId);
+
     if (!response.ok) {
-      setMessage(payload?.error ?? "Investment save failed.");
+      toast.error(payload?.error ?? "Investment save failed.");
       return;
     }
 
@@ -178,12 +178,12 @@ export default function InvestmentsPage() {
       investedAt: new Date().toISOString().slice(0, 10),
       note: "",
     });
-    setMessage("Investment submitted for partner verification.");
+    toast.success("Investment submitted for partner verification.");
     await load({ ...filters, page: 1 });
   }
 
   async function review(id: string, decision: "approved" | "rejected") {
-    setMessage(
+    const loadingToastId = toast.loading(
       `${decision === "approved" ? "Approving" : "Rejecting"} investment...`,
     );
 
@@ -194,12 +194,14 @@ export default function InvestmentsPage() {
     });
     const payload = await readJsonResponse<{ error?: string }>(response);
 
+    toast.dismiss(loadingToastId);
+
     if (!response.ok) {
-      setMessage(payload?.error ?? "Investment review failed.");
+      toast.error(payload?.error ?? "Investment review failed.");
       return;
     }
 
-    setMessage(`Investment ${decision}.`);
+    toast.success(`Investment ${decision}.`);
     await load();
   }
 
@@ -301,9 +303,6 @@ export default function InvestmentsPage() {
           >
             Submit investment
           </button>
-          {message ? (
-            <p className="mt-3 text-sm text-(--text-secondary)">{message}</p>
-          ) : null}
         </div>
 
         <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">

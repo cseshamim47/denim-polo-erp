@@ -2,15 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
-import { connectToDatabase } from "@/lib/db";
-import { decimalToNumber } from "@/lib/money";
+import { listExpenseHistory } from "@/lib/services/expense-history";
 import { createExpense, reviewExpense } from "@/lib/services/expenses";
-import ExpenseModel from "@/models/Expense";
 
 const createExpenseSchema = z.object({
   title: z.string().trim().min(1),
   amount: z.number().positive(),
-  category: z.string().trim().min(1),
   note: z.string().trim().optional(),
   expenseDate: z.coerce.date(),
 });
@@ -21,30 +18,36 @@ const reviewExpenseSchema = z.object({
   comment: z.string().trim().optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getRequiredSession(["partner"]);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await connectToDatabase();
+  try {
+    const { searchParams } = new URL(request.url);
+    const history = await listExpenseHistory({
+      actorId: session.user.id,
+      page: Number(searchParams.get("page") ?? "1"),
+      pageSize: Number(searchParams.get("pageSize") ?? "10"),
+      scope: searchParams.get("scope"),
+      owner: searchParams.get("owner"),
+      status: searchParams.get("status"),
+      from: searchParams.get("from"),
+      to: searchParams.get("to"),
+    });
 
-  const expenses = await ExpenseModel.find().sort({ expenseDate: -1 }).lean();
-
-  return NextResponse.json({
-    expenses: expenses.map((expense) => ({
-      id: expense._id.toString(),
-      title: expense.title,
-      amount: decimalToNumber(expense.amount),
-      category: expense.category,
-      status: expense.status,
-      requiredApprovalCount: expense.requiredApprovalCountSnapshot,
-      approvalCount: expense.approvals.length,
-      expenseDate: expense.expenseDate,
-      note: expense.note,
-    })),
-  });
+    return NextResponse.json(history);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to load expenses",
+      },
+      { status: 400 },
+    );
+  }
 }
 
 export async function POST(request: Request) {

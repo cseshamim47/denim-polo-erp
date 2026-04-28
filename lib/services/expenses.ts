@@ -12,11 +12,10 @@ import UserModel from "@/models/User";
 export async function createExpense(input: {
   title: string;
   amount: number;
-  category: string;
   note?: string;
   expenseDate: Date;
   submittedBy: string;
-}): Promise<any> {
+}) {
   await connectToDatabase();
 
   const activePartners = await UserModel.find({
@@ -35,7 +34,6 @@ export async function createExpense(input: {
   return ExpenseModel.create({
     title: input.title,
     amount: toDecimal128(input.amount),
-    category: input.category,
     note: input.note ?? null,
     submittedBy: new Types.ObjectId(input.submittedBy),
     submittedAt: new Date(),
@@ -54,7 +52,7 @@ export async function reviewExpense(input: {
   partnerId: string;
   decision: "approved" | "rejected";
   comment?: string;
-}): Promise<any> {
+}) {
   await connectToDatabase();
 
   const expense = await ExpenseModel.findById(input.expenseId);

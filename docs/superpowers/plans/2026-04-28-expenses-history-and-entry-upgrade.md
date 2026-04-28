@@ -34,6 +34,7 @@ This is one subsystem: the partner expenses workflow. The work spans one API rou
 ### Task 1: Add Expense History Service And API Contract
 
 **Files:**
+
 - Create: `lib/services/expense-history.ts`
 - Modify: `app/api/expenses/route.ts:10-109`
 - Modify: `tests/integration/expenses.test.ts:9-126`
@@ -177,7 +178,10 @@ export async function listExpenseHistory(input: ExpenseHistoryInput) {
     query.submittedBy = new Types.ObjectId(input.owner);
   }
 
-  if (input.status && ["pending", "approved", "rejected"].includes(input.status)) {
+  if (
+    input.status &&
+    ["pending", "approved", "rejected"].includes(input.status)
+  ) {
     query.status = input.status;
   }
 
@@ -201,18 +205,25 @@ export async function listExpenseHistory(input: ExpenseHistoryInput) {
     }
   }
 
-  const [partners, totalCount, expenses, titleSuggestions, categorySuggestions] =
-    await Promise.all([
-      UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
-      ExpenseModel.countDocuments(query),
-      ExpenseModel.find(query)
-        .sort({ expenseDate: -1, createdAt: -1 })
-        .skip((input.page - 1) * input.pageSize)
-        .limit(input.pageSize)
-        .lean(),
-      ExpenseModel.distinct("title"),
-      ExpenseModel.distinct("category"),
-    ]);
+  const [
+    partners,
+    totalCount,
+    expenses,
+    titleSuggestions,
+    categorySuggestions,
+  ] = await Promise.all([
+    UserModel.find({ role: "partner", isActive: true })
+      .sort({ name: 1 })
+      .lean(),
+    ExpenseModel.countDocuments(query),
+    ExpenseModel.find(query)
+      .sort({ expenseDate: -1, createdAt: -1 })
+      .skip((input.page - 1) * input.pageSize)
+      .limit(input.pageSize)
+      .lean(),
+    ExpenseModel.distinct("title"),
+    ExpenseModel.distinct("category"),
+  ]);
 
   const partnerNameById = new Map(
     partners.map((partner) => [partner._id.toString(), partner.name]),
@@ -224,8 +235,12 @@ export async function listExpenseHistory(input: ExpenseHistoryInput) {
       name: partner.name,
       email: partner.email,
     })),
-    titleSuggestions: [...titleSuggestions].sort((left, right) => left.localeCompare(right)),
-    categorySuggestions: [...categorySuggestions].sort((left, right) => left.localeCompare(right)),
+    titleSuggestions: [...titleSuggestions].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    categorySuggestions: [...categorySuggestions].sort((left, right) =>
+      left.localeCompare(right),
+    ),
     expenses: expenses.map((expense) => ({
       id: expense._id.toString(),
       title: expense.title,
@@ -237,7 +252,8 @@ export async function listExpenseHistory(input: ExpenseHistoryInput) {
       expenseDate: expense.expenseDate.toISOString(),
       submittedById: expense.submittedBy.toString(),
       submittedByName:
-        partnerNameById.get(expense.submittedBy.toString()) ?? "Unknown partner",
+        partnerNameById.get(expense.submittedBy.toString()) ??
+        "Unknown partner",
       requiredApprovalCount: expense.requiredApprovalCountSnapshot,
       approvalCount: expense.approvals.length,
       canReview:
@@ -249,7 +265,8 @@ export async function listExpenseHistory(input: ExpenseHistoryInput) {
       approvals: expense.approvals.map((approval) => ({
         partnerId: approval.partnerId.toString(),
         partnerName:
-          partnerNameById.get(approval.partnerId.toString()) ?? "Unknown partner",
+          partnerNameById.get(approval.partnerId.toString()) ??
+          "Unknown partner",
         decision: approval.decision,
         comment: approval.comment ?? null,
         decidedAt: approval.decidedAt.toISOString(),
@@ -282,7 +299,8 @@ export async function GET(request: Request) {
       Math.max(Number(searchParams.get("pageSize") ?? "10") || 10, 1),
       50,
     ),
-    scope: (searchParams.get("scope")?.trim() as "all" | "mine" | "others") || "all",
+    scope:
+      (searchParams.get("scope")?.trim() as "all" | "mine" | "others") || "all",
     owner: searchParams.get("owner")?.trim() ?? "",
     status: searchParams.get("status")?.trim() ?? "",
     from: searchParams.get("from") ?? "",
@@ -311,6 +329,7 @@ git commit -m "feat(expenses): add history filters api"
 ### Task 2: Add Searchable Creatable Expense Field Helpers
 
 **Files:**
+
 - Create: `app/(dashboard)/expenses/_lib/expense-form.ts`
 - Create: `app/(dashboard)/expenses/_components/searchable-creatable-field.tsx`
 - Create: `tests/unit/expenseForm.test.ts`
@@ -338,7 +357,9 @@ describe("expense form helpers", () => {
   });
 
   it("offers create only when the typed value is not already present", () => {
-    expect(shouldOfferCreateOption(["Transport", "Fuel"], "Transport")).toBe(false);
+    expect(shouldOfferCreateOption(["Transport", "Fuel"], "Transport")).toBe(
+      false,
+    );
     expect(shouldOfferCreateOption(["Transport", "Fuel"], "Taxi")).toBe(true);
   });
 
@@ -559,6 +580,7 @@ git commit -m "feat(expenses): add searchable expense fields"
 ### Task 3: Rebuild The Expenses Page Around History, Filters, And Inline Validation
 
 **Files:**
+
 - Modify: `app/(dashboard)/expenses/page.tsx:5-167`
 - Test: `tests/integration/expenses.test.ts`
 - Test: `tests/unit/expenseForm.test.ts`
@@ -664,10 +686,12 @@ async function submitExpense() {
   });
 
   const payload = (await response.json()) as {
-    error?: string | {
-      formErrors?: string[];
-      fieldErrors?: Record<string, string[] | undefined>;
-    };
+    error?:
+      | string
+      | {
+          formErrors?: string[];
+          fieldErrors?: Record<string, string[] | undefined>;
+        };
     expenseId?: string;
   };
 
@@ -849,6 +873,7 @@ git commit -m "feat(expenses): rebuild expense workflow page"
 ## Self-Review
 
 **Spec coverage:**
+
 - Searchable clickable dropdown for previous titles: covered by Task 2 component and Task 3 page wiring.
 - Searchable clickable dropdown for previous categories: covered by Task 2 component and Task 3 page wiring.
 - Creating a new title/category when the typed value does not exist: covered by `shouldOfferCreateOption` in Task 2 and the component wiring in Task 3.
@@ -858,9 +883,11 @@ git commit -m "feat(expenses): rebuild expense workflow page"
 - Expense filters like investments filters: covered by Task 1 GET contract and Task 3 filter controls.
 
 **Placeholder scan:**
+
 - No `TODO`, `TBD`, or deferred implementation markers remain.
 
 **Type consistency:**
+
 - Persistence keeps the existing `amount` field; user-facing copy can say `Balance` while API/model code remains `amount`.
 - Filter params match the investments page contract: `page`, `pageSize`, `scope`, `owner`, `status`, `from`, `to`.
 

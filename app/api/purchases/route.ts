@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
-import { createPurchase } from "@/lib/services/purchases";
+import { createPurchase, listPurchases } from "@/lib/services/purchases";
 
 const purchaseSchema = z.object({
   variantId: z.string().trim().min(1),
@@ -13,6 +13,34 @@ const purchaseSchema = z.object({
   billImageUrl: z.string().trim().optional(),
   note: z.string().trim().optional(),
 });
+
+export async function GET(request: Request) {
+  const session = await getRequiredSession(["partner"]);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const search = url.searchParams.get("search") ?? "";
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+
+  try {
+    const purchases = await listPurchases({
+      search,
+      from: from ? new Date(`${from}T00:00:00.000Z`) : undefined,
+      to: to ? new Date(`${to}T23:59:59.999Z`) : undefined,
+    });
+
+    return NextResponse.json({ purchases }, { status: 200 });
+  } catch {
+    return NextResponse.json(
+      { error: "Unable to load purchases" },
+      { status: 500 },
+    );
+  }
+}
 
 export async function POST(request: Request) {
   const session = await getRequiredSession(["partner"]);

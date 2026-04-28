@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Product = {
   id: string;
@@ -16,15 +17,32 @@ type Variant = {
   size: string;
   stockQty: number;
   avgCost: number;
+  sellingPrice: number;
 };
 
 type PurchaseItemForm = {
   id: string;
+  sku: string;
   productId: string;
   size: string;
   color: string;
   qty: number;
   costPerUnit: number;
+};
+
+type PurchaseHistoryRecord = {
+  id: string;
+  purchaseDate: string;
+  sku: string;
+  productName: string;
+  size: string;
+  color: string;
+  qty: number;
+  costPerUnit: number;
+  additionalCost: number;
+  totalCost: number;
+  cashOutTotal: number;
+  note: string | null;
 };
 
 type PurchasePayload = {
@@ -59,6 +77,7 @@ function currency(value: number) {
 function createItem(): PurchaseItemForm {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    sku: "",
     productId: "",
     size: "",
     color: "",
@@ -152,29 +171,30 @@ export default function NewPurchasePage() {
   const [supplier, setSupplier] = useState("");
   const [transportCost, setTransportCost] = useState(0);
   const [otherCost, setOtherCost] = useState(0);
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<PurchaseItemForm[]>([createItem()]);
-  const [message, setMessage] = useState<string | null>(null);
-  const [messageType, setMessageType] = useState<"success" | "error" | null>(
-    null,
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFromDate, setHistoryFromDate] = useState("");
+  const [historyToDate, setHistoryToDate] = useState("");
+  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryRecord[]>([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   function setSuccess(msg: string) {
-    setMessage(msg);
-    setMessageType("success");
+    toast.success(msg);
   }
 
   function setError(msg: string) {
-    setMessage(msg);
-    setMessageType("error");
+    toast.error(msg);
   }
 
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const [productsResponse, variantsResponse] = await Promise.all([
+        const [productsResponse, variantsResponse, purchasesResponse] = await Promise.all([
           fetch("/api/products", { cache: "no-store" }),
           fetch("/api/variants", { cache: "no-store" }),
+          fetch("/api/purchases", { cache: "no-store" }),
         ]);
 
         const productsPayload = await readJsonResponse<{
@@ -183,14 +203,18 @@ export default function NewPurchasePage() {
         const variantsPayload = await readJsonResponse<{
           variants?: Variant[];
         }>(variantsResponse);
+        const purchasesPayload = await readJsonResponse<{
+          purchases?: PurchaseHistoryRecord[];
+        }>(purchasesResponse);
 
-        if (!productsResponse.ok || !variantsResponse.ok) {
+        if (!productsResponse.ok || !variantsResponse.ok || !purchasesResponse.ok) {
           setError("Unable to load purchase catalog right now.");
           return;
         }
 
         setProducts(productsPayload?.products ?? []);
         setVariants(variantsPayload?.variants ?? []);
+        setPurchaseHistory(purchasesPayload?.purchases ?? []);
       } catch {
         setError("Unable to load purchase catalog right now.");
       }
@@ -198,6 +222,49 @@ export default function NewPurchasePage() {
 
     void loadCatalog();
   }, []);
+
+  async function loadHistory(filters?: {
+    search?: string;
+    from?: string;
+    to?: string;
+  }) {
+    setIsHistoryLoading(true);
+
+    try {
+      const params = new URLSearchParams();
+      const activeSearch = filters?.search ?? historySearch;
+      const activeFrom = filters?.from ?? historyFromDate;
+      const activeTo = filters?.to ?? historyToDate;
+
+      if (activeSearch.trim()) {
+        params.set("search", activeSearch.trim());
+      }
+      if (activeFrom) {
+        params.set("from", activeFrom);
+      }
+      if (activeTo) {
+        params.set("to", activeTo);
+      }
+
+      const response = await fetch(`/api/purchases?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = await readJsonResponse<{ purchases?: PurchaseHistoryRecord[] }>(
+        response,
+      );
+
+      if (!response.ok) {
+        setError("Unable to load purchase history right now.");
+        return;
+      }
+
+      setPurchaseHistory(payload?.purchases ?? []);
+    } catch {
+      setError("Unable to load purchase history right now.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }
 
   const subtotal = items.reduce(
     (total, item) => total + item.qty * item.costPerUnit,
@@ -224,11 +291,43 @@ export default function NewPurchasePage() {
     );
   }
 
+  function findVariantBySku(sku: string) {
+    const normalizedSku = sku.trim().toUpperCase();
+
+    if (!normalizedSku) {
+      return null;
+    }
+
+    return variants.find((variant) => variant.sku === normalizedSku) ?? null;
+  }
+
   function getProductVariants(productId: string) {
     return variants.filter((variant) => variant.productId === productId);
   }
 
+  function updateItemSku(id: string, skuValue: string) {
+    const normalizedSku = skuValue.toUpperCase();
+    const matchedVariant = findVariantBySku(normalizedSku);
+
+    if (!matchedVariant) {
+      updateItem(id, { sku: normalizedSku });
+      return;
+    }
+
+    updateItem(id, {
+      sku: matchedVariant.sku,
+      productId: matchedVariant.productId,
+      size: matchedVariant.size,
+      color: matchedVariant.color,
+    });
+  }
+
   async function submitPurchase() {
+    if (!purchaseDate) {
+      setError("Purchase date is required.");
+      return;
+    }
+
     if (items.length === 0) {
       setError("Add at least one purchase item.");
       return;
@@ -237,6 +336,11 @@ export default function NewPurchasePage() {
     const resolvedItems = [] as PurchasePayload["items"];
 
     for (const [index, item] of items.entries()) {
+      if (!item.sku.trim()) {
+        setError(`Item ${index + 1}: enter or select an SKU.`);
+        return;
+      }
+
       if (!item.productId) {
         setError(`Item ${index + 1}: select a product.`);
         return;
@@ -257,8 +361,8 @@ export default function NewPurchasePage() {
         return;
       }
 
-      if (item.costPerUnit < 0) {
-        setError(`Item ${index + 1}: cost cannot be negative.`);
+      if (item.costPerUnit <= 0) {
+        setError(`Item ${index + 1}: cost per unit is required.`);
         return;
       }
 
@@ -267,6 +371,13 @@ export default function NewPurchasePage() {
       if (!matchedVariant) {
         setError(
           `Item ${index + 1}: no variant found for the selected product, size, and color.`,
+        );
+        return;
+      }
+
+      if (item.costPerUnit > matchedVariant.sellingPrice) {
+        setError(
+          `Item ${index + 1}: cost (${currency(item.costPerUnit)}) cannot be more than selling price (${currency(matchedVariant.sellingPrice)}).`,
         );
         return;
       }
@@ -303,10 +414,14 @@ export default function NewPurchasePage() {
     };
 
     setIsSubmitting(true);
-    setMessage(null);
 
     try {
-      const batchNote = buildBatchNote(payload);
+      const batchNote = [
+        buildBatchNote(payload),
+        notes.trim() ? `Notes: ${notes.trim()}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       for (const [index, item] of payload.items.entries()) {
         const response = await fetch("/api/purchases", {
@@ -337,6 +452,8 @@ export default function NewPurchasePage() {
       setItems([createItem()]);
       setTransportCost(0);
       setOtherCost(0);
+      setNotes("");
+      await loadHistory();
     } catch {
       setError("Purchase save failed. Please try again.");
     } finally {
@@ -345,7 +462,7 @@ export default function NewPurchasePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       {/* Header */}
       <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
         <h1 className="text-2xl font-semibold tracking-tight">New Purchase</h1>
@@ -408,6 +525,9 @@ export default function NewPurchasePage() {
           {items.map((item, index) => {
             const matchedVariant = getMatchingVariant(item);
             const rowVariants = getProductVariants(item.productId);
+            const skuOptions = Array.from(
+              new Set(variants.map((variant) => variant.sku)),
+            ).sort((left, right) => left.localeCompare(right));
             const sizeOptions = Array.from(
               new Set(rowVariants.map((variant) => variant.size)),
             );
@@ -443,7 +563,25 @@ export default function NewPurchasePage() {
                   </button>
                 </div>
 
-                {/* Product */}
+                {/* SKU + Product */}
+                <div className="mt-3">
+                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                    SKU
+                    <input
+                      className="field"
+                      list={`sku-options-${item.id}`}
+                      placeholder="Type or pick an SKU"
+                      value={item.sku}
+                      onChange={(event) => updateItemSku(item.id, event.target.value)}
+                    />
+                    <datalist id={`sku-options-${item.id}`}>
+                      {skuOptions.map((sku) => (
+                        <option key={sku} value={sku} />
+                      ))}
+                    </datalist>
+                  </label>
+                </div>
+
                 <div className="mt-3">
                   <label className="grid gap-1.5 text-sm font-medium text-foreground">
                     Product
@@ -453,6 +591,7 @@ export default function NewPurchasePage() {
                       onChange={(event) =>
                         updateItem(item.id, {
                           productId: event.target.value,
+                          sku: "",
                           size: "",
                           color: "",
                         })
@@ -477,11 +616,20 @@ export default function NewPurchasePage() {
                       list={`size-options-${item.id}`}
                       placeholder="e.g. M, 32"
                       value={item.size}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextSize = event.target.value.toUpperCase();
+                        const nextVariant = variants.find(
+                          (variant) =>
+                            variant.productId === item.productId &&
+                            variant.size === nextSize &&
+                            variant.color === item.color.trim().toUpperCase(),
+                        );
+
                         updateItem(item.id, {
-                          size: event.target.value.toUpperCase(),
-                        })
-                      }
+                          size: nextSize,
+                          sku: nextVariant?.sku ?? item.sku,
+                        });
+                      }}
                     />
                     <datalist id={`size-options-${item.id}`}>
                       {sizeOptions.map((size) => (
@@ -496,11 +644,20 @@ export default function NewPurchasePage() {
                       list={`color-options-${item.id}`}
                       placeholder="e.g. BLK, RED"
                       value={item.color}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextColor = event.target.value.toUpperCase();
+                        const nextVariant = variants.find(
+                          (variant) =>
+                            variant.productId === item.productId &&
+                            variant.size === item.size.trim().toUpperCase() &&
+                            variant.color === nextColor,
+                        );
+
                         updateItem(item.id, {
-                          color: event.target.value.toUpperCase(),
-                        })
-                      }
+                          color: nextColor,
+                          sku: nextVariant?.sku ?? item.sku,
+                        });
+                      }}
                     />
                     <datalist id={`color-options-${item.id}`}>
                       {colorOptions.map((color) => (
@@ -557,19 +714,32 @@ export default function NewPurchasePage() {
                 <div className="mt-3">
                   {item.productId &&
                     (matchedVariant ? (
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--success)/25">
-                        <span className="text-xs font-semibold text-(--success)">
-                          ✓ Variant matched
-                        </span>
-                        <span className="text-xs text-(--text-secondary)">
-                          SKU: {matchedVariant.sku}
-                        </span>
-                        <span className="text-xs text-(--text-secondary)">
-                          In stock: {matchedVariant.stockQty}
-                        </span>
-                        <span className="text-xs text-(--text-secondary)">
-                          Avg cost: {currency(matchedVariant.avgCost)}
-                        </span>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--success)/25">
+                          <span className="text-xs font-semibold text-(--success)">
+                            ✓ Variant matched
+                          </span>
+                          <span className="text-xs text-(--text-secondary)">
+                            SKU: {matchedVariant.sku}
+                          </span>
+                          <span className="text-xs text-(--text-secondary)">
+                            In stock: {matchedVariant.stockQty}
+                          </span>
+                          <span className="text-xs text-(--text-secondary)">
+                            Avg cost: {currency(matchedVariant.avgCost)}
+                          </span>
+                          <span className="text-xs text-(--text-secondary)">
+                            Selling: {currency(matchedVariant.sellingPrice)}
+                          </span>
+                        </div>
+                        {item.costPerUnit > 0 &&
+                        item.costPerUnit > matchedVariant.sellingPrice ? (
+                          <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--danger)/25">
+                            <span className="text-xs text-(--danger)">
+                              Cost per unit cannot be more than selling price.
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--warning)/25">
@@ -650,6 +820,21 @@ export default function NewPurchasePage() {
             </label>
           </div>
 
+          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+            <span>
+              Notes{" "}
+              <span className="font-normal text-(--text-secondary)">
+                (optional)
+              </span>
+            </span>
+            <textarea
+              className="field min-h-24"
+              placeholder="Any context for this purchase batch"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          </label>
+
           {/* Grand total */}
           <div className="flex items-center justify-between rounded-[1.4rem] bg-(--surface-accent) px-5 py-4">
             <span className="font-semibold text-(--text-inverse)">
@@ -675,19 +860,127 @@ export default function NewPurchasePage() {
               ? "Saving…"
               : `Save ${items.length} ${items.length === 1 ? "item" : "items"}`}
           </button>
+        </div>
+      </div>
 
-          {/* Status message */}
-          {message ? (
-            <div
-              className={`rounded-[1.2rem] p-4 text-sm leading-6 ${
-                messageType === "success"
-                  ? "bg-white ring-1 ring-(--success)/40 text-(--success)"
-                  : "bg-white ring-1 ring-(--danger)/40 text-(--danger)"
-              }`}
+      {/* Step 4 — Purchase history */}
+      <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-accent) text-xs font-bold text-(--text-inverse)">
+            4
+          </span>
+          <h2 className="text-lg font-semibold tracking-tight">Purchase history</h2>
+          <button
+            className="btn-secondary ml-auto"
+            onClick={() => void loadHistory()}
+            type="button"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 rounded-[1.2rem] bg-(--surface-accent-soft) p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2 lg:col-span-1">
+            Search
+            <input
+              className="field"
+              placeholder="SKU, product, size, color, note"
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+            From date
+            <input
+              className="field"
+              type="date"
+              value={historyFromDate}
+              onChange={(event) => setHistoryFromDate(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+            To date
+            <input
+              className="field"
+              type="date"
+              value={historyToDate}
+              onChange={(event) => setHistoryToDate(event.target.value)}
+            />
+          </label>
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
+            <button
+              className="btn-primary w-full"
+              onClick={() => void loadHistory()}
+              type="button"
             >
-              {message}
-            </div>
-          ) : null}
+              Apply filter
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setHistorySearch("");
+                setHistoryFromDate("");
+                setHistoryToDate("");
+                void loadHistory({ search: "", from: "", to: "" });
+              }}
+              type="button"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto rounded-[1.2rem] ring-1 ring-(--stroke-soft)">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead className="bg-(--surface-accent-soft)">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">Date</th>
+                <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                <th className="px-3 py-2 text-left font-semibold">Product</th>
+                <th className="px-3 py-2 text-left font-semibold">Size/Color</th>
+                <th className="px-3 py-2 text-right font-semibold">Qty</th>
+                <th className="px-3 py-2 text-right font-semibold">Cost</th>
+                <th className="px-3 py-2 text-right font-semibold">Extra</th>
+                <th className="px-3 py-2 text-right font-semibold">Cash out</th>
+                <th className="px-3 py-2 text-left font-semibold">Note</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-(--stroke-soft) bg-white">
+              {isHistoryLoading ? (
+                <tr>
+                  <td className="px-3 py-5 text-center text-(--text-secondary)" colSpan={9}>
+                    Loading purchase history...
+                  </td>
+                </tr>
+              ) : purchaseHistory.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-5 text-center text-(--text-secondary)" colSpan={9}>
+                    No purchases found for the selected filters.
+                  </td>
+                </tr>
+              ) : (
+                purchaseHistory.map((record) => (
+                  <tr key={record.id} className="hover:bg-(--surface-accent-soft)/50">
+                    <td className="px-3 py-2">
+                      {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
+                    </td>
+                    <td className="px-3 py-2">{record.sku}</td>
+                    <td className="px-3 py-2">{record.productName}</td>
+                    <td className="px-3 py-2">
+                      {record.size} / {record.color}
+                    </td>
+                    <td className="px-3 py-2 text-right">{record.qty}</td>
+                    <td className="px-3 py-2 text-right">{currency(record.costPerUnit)}</td>
+                    <td className="px-3 py-2 text-right">{currency(record.additionalCost)}</td>
+                    <td className="px-3 py-2 text-right">{currency(record.cashOutTotal)}</td>
+                    <td className="px-3 py-2 text-xs text-(--text-secondary)">
+                      {(record.note ?? "").trim() || "-"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

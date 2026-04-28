@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Sale = {
   id: string;
@@ -26,13 +27,22 @@ export default function ReturnsPage() {
   const [returnType, setReturnType] = useState<"customer_return" | "damaged">(
     "customer_return",
   );
-  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadSales() {
-      const response = await fetch("/api/sales", { cache: "no-store" });
-      const payload = (await response.json()) as { sales?: Sale[] };
-      setSales(payload.sales ?? []);
+      try {
+        const response = await fetch("/api/sales", { cache: "no-store" });
+        const payload = (await response.json()) as { sales?: Sale[]; error?: string };
+
+        if (!response.ok) {
+          toast.error(payload.error ?? "Unable to load sales right now.");
+          return;
+        }
+
+        setSales(payload.sales ?? []);
+      } catch {
+        toast.error("Unable to load sales right now.");
+      }
     }
 
     void loadSales();
@@ -41,6 +51,7 @@ export default function ReturnsPage() {
   const selectedSale = sales.find((sale) => sale.id === selectedSaleId);
 
   async function submitReturn() {
+    const loadingToastId = toast.loading("Saving return...");
     const response = await fetch("/api/returns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,11 +68,15 @@ export default function ReturnsPage() {
       error?: string;
       returnId?: string;
     };
-    setMessage(
-      response.ok
-        ? `Return saved: ${payload.returnId}`
-        : (payload.error ?? "Return failed."),
-    );
+
+    toast.dismiss(loadingToastId);
+
+    if (!response.ok) {
+      toast.error(payload.error ?? "Return failed.");
+      return;
+    }
+
+    toast.success(`Return saved: ${payload.returnId}`);
   }
 
   return (
@@ -124,9 +139,6 @@ export default function ReturnsPage() {
         >
           Save return
         </button>
-        {message ? (
-          <p className="text-sm text-[var(--text-secondary)]">{message}</p>
-        ) : null}
       </section>
       <section className="space-y-4 rounded-[1.8rem] bg-[var(--surface-accent-soft)] p-6 ring-1 ring-[var(--stroke-soft)]">
         <p className="text-sm leading-7 text-[var(--text-primary)]">

@@ -13,7 +13,6 @@ export interface ExpenseApproval {
 export interface Expense {
   title: string;
   amount: unknown;
-  category: string;
   note?: string | null;
   submittedBy: Types.ObjectId;
   submittedAt: Date;
@@ -42,7 +41,6 @@ const expenseSchema = new Schema<Expense>(
   {
     title: { type: String, required: true, trim: true },
     amount: { type: Schema.Types.Decimal128, required: true },
-    category: { type: String, required: true, trim: true },
     note: { type: String, default: null },
     submittedBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     submittedAt: { type: Date, required: true },
