@@ -974,7 +974,9 @@ export default function NewPurchasePage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-foreground">{record.sku}</p>
+                    <p className="font-semibold text-foreground">
+                      {record.sku}
+                    </p>
                     <p className="mt-1 text-sm text-(--text-secondary)">
                       {record.productName} · {record.size} / {record.color}
                     </p>
@@ -984,10 +986,15 @@ export default function NewPurchasePage() {
                   </p>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
-                  <p>Date: {new Date(record.purchaseDate).toLocaleDateString("en-BD")}</p>
+                  <p>
+                    Date:{" "}
+                    {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
+                  </p>
                   <p className="text-right">Qty: {record.qty}</p>
                   <p>Cost: {currency(record.costPerUnit)}</p>
-                  <p className="text-right">Extra: {currency(record.additionalCost)}</p>
+                  <p className="text-right">
+                    Extra: {currency(record.additionalCost)}
+                  </p>
                 </div>
                 {(record.note ?? "").trim() ? (
                   <p className="mt-3 text-xs leading-6 text-(--text-secondary)">
