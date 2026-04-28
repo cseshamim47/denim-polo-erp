@@ -2,10 +2,21 @@ import { NextResponse } from "next/server";
 
 import { getRequiredSession } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
+import { calculatePartnerProfitShares } from "@/lib/domain/profit-share";
 import { decimalToNumber } from "@/lib/money";
+import { getCurrentBalanceSnapshot } from "@/lib/services/balance";
 import ExpenseModel from "@/models/Expense";
+import InvestmentModel from "@/models/Investment";
 import SaleModel from "@/models/Sale";
+import type { Sale, SaleLine } from "@/models/Sale";
+import UserModel from "@/models/User";
 import VariantModel from "@/models/Variant";
+
+type DashboardSale = Pick<Sale, "items">;
+type DashboardSaleLine = Pick<
+  SaleLine,
+  "returnedQty" | "damagedQty" | "profitPerUnitSnapshot"
+>;
 
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -15,10 +26,8 @@ function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-function calculateSaleProfit(
-  sale: Awaited<ReturnType<typeof SaleModel.find>> extends never ? never : any,
-) {
-  return sale.items.reduce((total: number, item: any) => {
+function calculateSaleProfit(sale: DashboardSale) {
+  return sale.items.reduce((total: number, item: DashboardSaleLine) => {
     const resolvedQty = item.returnedQty + item.damagedQty;
     return (
       total +
@@ -51,6 +60,9 @@ export async function GET() {
     pendingExpenseCount,
     trendSales,
     trendExpenses,
+    investments,
+    partners,
+    balance,
   ] = await Promise.all([
     SaleModel.find({
       saleDate: { $gte: todayStart },
@@ -81,6 +93,11 @@ export async function GET() {
       expenseDate: { $gte: trendStart },
       status: "approved",
     }).lean(),
+    InvestmentModel.find({ status: "approved" }).lean(),
+    UserModel.find({ role: "partner", isActive: true })
+      .sort({ name: 1 })
+      .lean(),
+    getCurrentBalanceSnapshot(),
   ]);
 
   const todayProfit =
@@ -95,6 +112,23 @@ export async function GET() {
       (sum, expense) => sum + decimalToNumber(expense.amount),
       0,
     );
+  const distributableProfit = Math.max(monthProfit, 0);
+  const partnerShares = calculatePartnerProfitShares({
+    totalProfitPool: distributableProfit,
+    partners: partners.map((partner) => ({
+      partnerId: partner._id.toString(),
+      partnerName: partner.name,
+      totalInvestment: investments
+        .filter(
+          (investment) =>
+            investment.partnerId.toString() === partner._id.toString(),
+        )
+        .reduce(
+          (sum, investment) => sum + decimalToNumber(investment.amount),
+          0,
+        ),
+    })),
+  });
 
   const trendMap = new Map<
     string,
@@ -135,11 +169,17 @@ export async function GET() {
 
   return NextResponse.json({
     summary: {
+      currentBalance: balance.currentBalance,
       todayProfit,
       monthProfit,
       lowStockCount,
       pendingExpenseCount,
     },
     trend: Array.from(trendMap.values()),
+    capital: {
+      totalInvested: partnerShares.totalInvested,
+      distributableProfit,
+      partnerShares: partnerShares.shares,
+    },
   });
 }

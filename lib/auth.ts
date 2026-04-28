@@ -1,13 +1,14 @@
 import { getServerSession } from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { z } from "zod";
 
 import { connectToDatabase } from "@/lib/db";
-import UserModel, { type UserRole } from "@/models/User";
+import UserModel, { type AuthProvider, type UserRole } from "@/models/User";
 
 const credentialsSchema = z.object({
-  mode: z.enum(["partner", "salesman"]),
+  mode: z.literal("salesman"),
   email: z.email().trim().toLowerCase(),
   password: z.string().optional(),
 });
@@ -39,10 +40,12 @@ function buildPartnerName(email: string) {
     .join(" ");
 }
 
-async function upsertEnvUser(input: {
+async function upsertUser(input: {
   email: string;
   role: UserRole;
   name: string;
+  authProvider: AuthProvider;
+  image?: string | null;
 }) {
   await connectToDatabase();
 
@@ -57,8 +60,8 @@ async function upsertEnvUser(input: {
     {
       $set: {
         name: input.name,
-        image: null,
-        authProvider: "credentials",
+        image: input.image ?? null,
+        authProvider: input.authProvider,
         role: input.role,
         isActive: true,
       },
@@ -83,6 +86,10 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
   },
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    }),
     CredentialsProvider({
       name: "ERP Login",
       credentials: {
@@ -97,32 +104,6 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        if (parsed.data.mode === "partner") {
-          const allowedPartnerEmails = getPartnerEmailAllowList();
-
-          if (!allowedPartnerEmails.includes(parsed.data.email)) {
-            return null;
-          }
-
-          const user = await upsertEnvUser({
-            email: parsed.data.email,
-            role: "partner",
-            name: buildPartnerName(parsed.data.email),
-          });
-
-          if (!user) {
-            return null;
-          }
-
-          return {
-            id: user._id.toString(),
-            email: user.email,
-            name: user.name,
-            image: user.image ?? undefined,
-            role: user.role,
-          };
-        }
-
         const salesmanCredentials = getSalesmanCredentials();
 
         if (
@@ -133,10 +114,11 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await upsertEnvUser({
+        const user = await upsertUser({
           email: salesmanCredentials.email,
           role: "salesman",
           name: salesmanCredentials.name,
+          authProvider: "credentials",
         });
 
         if (!user) {
@@ -154,6 +136,31 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (account?.provider !== "google") {
+        return true;
+      }
+
+      const email = user.email?.trim().toLowerCase();
+
+      if (!email) {
+        return false;
+      }
+
+      if (!getPartnerEmailAllowList().includes(email)) {
+        return false;
+      }
+
+      const savedUser = await upsertUser({
+        email,
+        role: "partner",
+        name: user.name?.trim() || buildPartnerName(email),
+        authProvider: "google",
+        image: user.image ?? null,
+      });
+
+      return Boolean(savedUser);
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

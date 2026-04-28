@@ -4,7 +4,6 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 
 export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
-  const [partnerEmail, setPartnerEmail] = useState("");
   const [salesmanEmail, setSalesmanEmail] = useState("");
   const [salesmanPassword, setSalesmanPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -12,25 +11,11 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
     null,
   );
 
-  async function handlePartnerLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handlePartnerLogin() {
     setLoadingMode("partner");
     setError(null);
 
-    const result = await signIn("credentials", {
-      mode: "partner",
-      email: partnerEmail,
-      callbackUrl,
-      redirect: false,
-    });
-
-    if (!result || result.error) {
-      setError("Partner login failed. Use an email from PARTNER_EMAILS.");
-      setLoadingMode(null);
-      return;
-    }
-
-    window.location.href = result.url ?? callbackUrl;
+    await signIn("google", { callbackUrl });
   }
 
   async function handleSalesmanLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -65,8 +50,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
           Real shop flow. No paper guesswork.
         </h1>
         <p className="mt-5 max-w-2xl text-sm leading-7 text-(--text-secondary)">
-          Partners and salesmen sign in from env-controlled credentials. Sales,
-          stock, expenses, and returns all land in one ledger.
+          Partners use approved Google accounts while the salesman signs in with
+          shop credentials. Sales, stock, expenses, and returns all land in one
+          ledger.
         </p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -99,33 +85,30 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
 
       <section className="panel rounded-4xl p-6 sm:p-8 lg:p-10">
         <div className="grid gap-6">
-          <form
-            className="grid gap-4 rounded-[1.6rem] bg-(--surface-accent) p-5 text-(--text-inverse)"
-            onSubmit={handlePartnerLogin}
-          >
+          <div className="grid gap-4 rounded-[1.6rem] bg-(--surface-accent) p-5 text-(--text-inverse)">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-white/60">
                 Partner access
               </p>
               <h2 className="mt-3 text-2xl font-semibold tracking-tight">
-                Partner email sign-in
+                Google partner sign-in
               </h2>
               <p className="mt-3 text-sm leading-6 text-white/78">
-                Any email listed in PARTNER_EMAILS can sign in as partner for now.
+                Only Google accounts listed in PARTNER_EMAILS can enter the
+                partner panel.
               </p>
             </div>
-            <input
-              className="field text-foreground"
-              autoComplete="email"
-              placeholder="partner@example.com"
-              type="email"
-              value={partnerEmail}
-              onChange={(event) => setPartnerEmail(event.target.value)}
-            />
-            <button className="btn-secondary w-full" disabled={loadingMode !== null} type="submit">
-              {loadingMode === "partner" ? "Signing in..." : "Sign in as partner"}
+            <button
+              className="btn-secondary w-full"
+              disabled={loadingMode !== null}
+              onClick={() => void handlePartnerLogin()}
+              type="button"
+            >
+              {loadingMode === "partner"
+                ? "Redirecting to Google..."
+                : "Continue with Google"}
             </button>
-          </form>
+          </div>
 
           <form
             className="grid gap-4 rounded-[1.6rem] bg-white/75 p-5"

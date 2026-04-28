@@ -4,10 +4,22 @@ import { useEffect, useState } from "react";
 
 type DashboardResponse = {
   summary: {
+    currentBalance: number;
     todayProfit: number;
     monthProfit: number;
     lowStockCount: number;
     pendingExpenseCount: number;
+  };
+  capital: {
+    totalInvested: number;
+    distributableProfit: number;
+    partnerShares: Array<{
+      partnerId: string;
+      partnerName: string;
+      totalInvestment: number;
+      profitSharePercent: number;
+      profitShareAmount: number;
+    }>;
   };
   trend: Array<{
     date: string;
@@ -33,7 +45,9 @@ export default function DashboardPage() {
     async function loadDashboard() {
       try {
         const response = await fetch("/api/dashboard", { cache: "no-store" });
-        const payload = (await response.json()) as DashboardResponse | { error?: string };
+        const payload = (await response.json()) as
+          | DashboardResponse
+          | { error?: string };
 
         if (!response.ok || !("summary" in payload)) {
           setError("Unable to load dashboard right now.");
@@ -60,11 +74,13 @@ export default function DashboardPage() {
             Partner panel
           </p>
           <h2 className="mt-3 max-w-xl text-4xl font-semibold tracking-tight text-[var(--text-primary)]">
-            Know profit today, weak stock now, and pending approvals before shop closes.
+            Know profit today, weak stock now, and pending approvals before shop
+            closes.
           </h2>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-secondary)]">
-            This dashboard stays focused on actions that replace pen-and-paper uncertainty: profit visibility,
-            low-stock pressure, and expense approvals waiting on partners.
+            This dashboard stays focused on actions that replace pen-and-paper
+            uncertainty: profit visibility, low-stock pressure, and expense
+            approvals waiting on partners.
           </p>
         </div>
         <div className="rounded-[2rem] bg-[var(--surface-accent-soft)] p-6 ring-1 ring-[var(--stroke-soft)]">
@@ -73,15 +89,24 @@ export default function DashboardPage() {
           </p>
           <div className="mt-4 grid gap-3">
             {latestTrend.map((entry) => (
-              <div key={entry.date} className="grid grid-cols-[70px_1fr_88px] items-center gap-3 text-sm">
-                <span className="text-[var(--text-secondary)]">{entry.date.slice(5)}</span>
+              <div
+                key={entry.date}
+                className="grid grid-cols-[70px_1fr_88px] items-center gap-3 text-sm"
+              >
+                <span className="text-[var(--text-secondary)]">
+                  {entry.date.slice(5)}
+                </span>
                 <div className="h-3 rounded-full bg-white/80">
                   <div
                     className="h-3 rounded-full bg-[var(--surface-accent)]"
-                    style={{ width: `${Math.max((entry.profit / peakProfit) * 100, 8)}%` }}
+                    style={{
+                      width: `${Math.max((entry.profit / peakProfit) * 100, 8)}%`,
+                    }}
                   />
                 </div>
-                <span className="text-right font-medium text-[var(--text-primary)]">{currency(entry.profit)}</span>
+                <span className="text-right font-medium text-[var(--text-primary)]">
+                  {currency(entry.profit)}
+                </span>
               </div>
             ))}
           </div>
@@ -90,16 +115,75 @@ export default function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Today profit", value: currency(data?.summary.todayProfit ?? 0) },
-          { label: "Month profit", value: currency(data?.summary.monthProfit ?? 0) },
-          { label: "Low-stock variants", value: String(data?.summary.lowStockCount ?? 0) },
-          { label: "Pending expenses", value: String(data?.summary.pendingExpenseCount ?? 0) },
+          {
+            label: "Balance in hand",
+            value: currency(data?.summary.currentBalance ?? 0),
+          },
+          {
+            label: "Today profit",
+            value: currency(data?.summary.todayProfit ?? 0),
+          },
+          {
+            label: "Month profit",
+            value: currency(data?.summary.monthProfit ?? 0),
+          },
+          {
+            label: "Low-stock variants",
+            value: String(data?.summary.lowStockCount ?? 0),
+          },
+          {
+            label: "Pending expenses",
+            value: String(data?.summary.pendingExpenseCount ?? 0),
+          },
         ].map((card) => (
-          <div key={card.label} className="rounded-[1.7rem] bg-white/80 p-5 ring-1 ring-[var(--stroke-soft)]">
+          <div
+            key={card.label}
+            className="rounded-[1.7rem] bg-white/80 p-5 ring-1 ring-[var(--stroke-soft)]"
+          >
             <p className="text-sm text-[var(--text-secondary)]">{card.label}</p>
-            <p className="mt-4 text-3xl font-semibold tracking-tight text-[var(--text-primary)]">{card.value}</p>
+            <p className="mt-4 text-3xl font-semibold tracking-tight text-[var(--text-primary)]">
+              {card.value}
+            </p>
           </div>
         ))}
+      </section>
+
+      <section className="rounded-[1.7rem] bg-white/80 p-5 ring-1 ring-[var(--stroke-soft)]">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-sm text-[var(--text-secondary)]">
+              Partner capital and profit share
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+              {currency(data?.capital.totalInvested ?? 0)} invested total
+            </h3>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Shareable month profit:{" "}
+            {currency(data?.capital.distributableProfit ?? 0)}
+          </p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {(data?.capital.partnerShares ?? []).map((share) => (
+            <div
+              key={share.partnerId}
+              className="rounded-[1.3rem] border border-[var(--stroke-soft)] p-4"
+            >
+              <p className="font-medium text-[var(--text-primary)]">
+                {share.partnerName}
+              </p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                Capital {currency(share.totalInvestment)}
+              </p>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Share {share.profitSharePercent}%
+              </p>
+              <p className="mt-3 text-lg font-semibold text-[var(--text-primary)]">
+                Owed {currency(share.profitShareAmount)}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {error ? (

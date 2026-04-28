@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  calculateBreakEvenUnits,
+  calculatePricingSuggestion,
+} from "@/lib/domain/pricing";
+
 type Product = {
   id: string;
   name: string;
@@ -19,6 +24,14 @@ type Variant = {
   sellingPrice: number;
 };
 
+function currency(value: number) {
+  return new Intl.NumberFormat("en-BD", {
+    style: "currency",
+    currency: "BDT",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -35,6 +48,33 @@ export default function ProductsPage() {
     sellingPrice: 0,
     lowStockThreshold: 0,
   });
+  const [pricingForm, setPricingForm] = useState({
+    costPerUnit: 0,
+    fixedExpensesTotal: 0,
+    expectedUnitsSold: 1,
+    targetMarginPercent: 25,
+  });
+
+  let pricingSuggestion: ReturnType<typeof calculatePricingSuggestion> | null =
+    null;
+  let pricingError: string | null = null;
+
+  try {
+    pricingSuggestion = calculatePricingSuggestion(pricingForm);
+  } catch (error) {
+    pricingError =
+      error instanceof Error ? error.message : "Invalid pricing input.";
+  }
+
+  let breakEvenUnits: number | null = null;
+
+  if (pricingSuggestion && variantForm.sellingPrice > pricingForm.costPerUnit) {
+    breakEvenUnits = calculateBreakEvenUnits({
+      sellingPrice: variantForm.sellingPrice,
+      costPerUnit: pricingForm.costPerUnit,
+      fixedExpensesTotal: pricingForm.fixedExpensesTotal,
+    });
+  }
 
   async function loadData() {
     const [productsResponse, variantsResponse] = await Promise.all([
@@ -233,6 +273,132 @@ export default function ProductsPage() {
           >
             Create variant
           </button>
+        </div>
+        <div className="grid gap-4 rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-[var(--stroke-soft)]">
+          <div>
+            <h3 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+              Smart pricing helper
+            </h3>
+            <p className="mt-2 text-sm leading-7 text-[var(--text-secondary)]">
+              Spread fixed expenses across expected units, then target a margin
+              that still fits the shop floor reality.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <input
+              className="field"
+              min={0}
+              onChange={(event) =>
+                setPricingForm((current) => ({
+                  ...current,
+                  costPerUnit: Number(event.target.value) || 0,
+                }))
+              }
+              placeholder="Cost per unit"
+              type="number"
+              value={pricingForm.costPerUnit}
+            />
+            <input
+              className="field"
+              min={0}
+              onChange={(event) =>
+                setPricingForm((current) => ({
+                  ...current,
+                  fixedExpensesTotal: Number(event.target.value) || 0,
+                }))
+              }
+              placeholder="Fixed expenses total"
+              type="number"
+              value={pricingForm.fixedExpensesTotal}
+            />
+            <input
+              className="field"
+              min={1}
+              onChange={(event) =>
+                setPricingForm((current) => ({
+                  ...current,
+                  expectedUnitsSold: Number(event.target.value) || 1,
+                }))
+              }
+              placeholder="Expected units sold"
+              type="number"
+              value={pricingForm.expectedUnitsSold}
+            />
+            <input
+              className="field"
+              max={99}
+              min={0}
+              onChange={(event) =>
+                setPricingForm((current) => ({
+                  ...current,
+                  targetMarginPercent: Number(event.target.value) || 0,
+                }))
+              }
+              placeholder="Target margin %"
+              type="number"
+              value={pricingForm.targetMarginPercent}
+            />
+          </div>
+          {pricingSuggestion ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[1.2rem] border border-[var(--stroke-soft)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                    Break-even / unit
+                  </p>
+                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
+                    {currency(pricingSuggestion.breakEvenPricePerUnit)}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-[var(--stroke-soft)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                    Suggested price
+                  </p>
+                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
+                    {currency(pricingSuggestion.suggestedSellingPrice)}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-[var(--stroke-soft)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                    Profit / unit
+                  </p>
+                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
+                    {currency(pricingSuggestion.expectedProfitPerUnit)}
+                  </p>
+                </div>
+                <div className="rounded-[1.2rem] border border-[var(--stroke-soft)] p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)]">
+                    Profit at target
+                  </p>
+                  <p className="mt-2 font-semibold text-[var(--text-primary)]">
+                    {currency(pricingSuggestion.expectedProfitTotal)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  className="btn-primary w-full sm:w-auto"
+                  onClick={() =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      sellingPrice:
+                        pricingSuggestion?.suggestedSellingPrice ?? 0,
+                    }))
+                  }
+                  type="button"
+                >
+                  Use suggested price in variant form
+                </button>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {breakEvenUnits !== null
+                    ? `At the current selling price, break-even needs ${breakEvenUnits} unit(s).`
+                    : "Set a selling price above cost in the variant form to see break-even units."}
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-[var(--danger)]">{pricingError}</p>
+          )}
         </div>
         {message ? (
           <p className="text-sm text-[var(--text-secondary)]">{message}</p>

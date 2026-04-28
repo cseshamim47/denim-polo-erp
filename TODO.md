@@ -12,22 +12,22 @@
 - [x] Build dashboard shell and sales entry UI
 - [x] Build product, purchase, expense, return, and report pages
 - [x] Build expense and return API flows
+- [x] Add integration tests for expense approval and return handling
 - [x] Validate typecheck, tests, and production build
 
 ## Next Recommended
 
-- [ ] Add integration tests for expense approval and return handling
+- [ ] Strengthen partner auth from email-only to password or OAuth-based login
 
 ## Pending
 
-- [ ] Add integration tests for expense approval and return handling
 - [ ] Strengthen partner auth from email-only to password or OAuth-based login
 - [ ] Add redirect logic so logged-in users hitting /login go to correct page automatically
 - [ ] Add seed/setup documentation for local and production environments
+- [ ] Add UploadThing bill upload flow for purchase bill images
 
 ## Skipped For Now
 
-- [ ] Add UploadThing bill upload flow for purchase bill images
 
 ## Notes
 

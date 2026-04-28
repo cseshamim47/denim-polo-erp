@@ -4,7 +4,10 @@ export interface Purchase {
   variantId: Types.ObjectId;
   qty: number;
   costPerUnit: unknown;
+  landedCostPerUnit: unknown;
   totalCost: unknown;
+  additionalCost: unknown;
+  cashOutTotal: unknown;
   billImageUrl?: string | null;
   purchaseDate: Date;
   note?: string | null;
@@ -23,7 +26,14 @@ const purchaseSchema = new Schema<Purchase>(
     },
     qty: { type: Number, required: true, min: 1 },
     costPerUnit: { type: Schema.Types.Decimal128, required: true },
+    landedCostPerUnit: { type: Schema.Types.Decimal128, required: true },
     totalCost: { type: Schema.Types.Decimal128, required: true },
+    additionalCost: {
+      type: Schema.Types.Decimal128,
+      required: true,
+      default: () => Types.Decimal128.fromString("0"),
+    },
+    cashOutTotal: { type: Schema.Types.Decimal128, required: true },
     billImageUrl: { type: String, default: null },
     purchaseDate: { type: Date, required: true },
     note: { type: String, default: null },

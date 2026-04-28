@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "seed:salesman": "node scripts/seed-salesman.mjs",
+    "seed:salesman": "node --env-file=.env scripts/seed-salesman.mjs",
+    "seed:demo": "node --env-file=.env scripts/seed-demo-data.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

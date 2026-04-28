@@ -8,6 +8,7 @@ const purchaseSchema = z.object({
   variantId: z.string().trim().min(1),
   qty: z.number().int().positive(),
   costPerUnit: z.number().nonnegative(),
+  additionalCost: z.number().nonnegative().optional(),
   purchaseDate: z.coerce.date(),
   billImageUrl: z.string().trim().optional(),
   note: z.string().trim().optional(),

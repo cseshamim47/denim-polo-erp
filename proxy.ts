@@ -6,12 +6,15 @@ const partnerOnlyPrefixes = [
   "/products",
   "/purchases",
   "/expenses",
+  "/investments",
   "/returns",
   "/reports",
   "/api/purchases",
   "/api/expenses",
   "/api/returns",
   "/api/dashboard",
+  "/api/investments",
+  "/api/uploadthing",
 ];
 
 const authRequiredPrefixes = [
@@ -65,6 +68,7 @@ export const config = {
     "/products/:path*",
     "/purchases/:path*",
     "/expenses/:path*",
+    "/investments/:path*",
     "/returns/:path*",
     "/reports/:path*",
     "/api/:path*",
