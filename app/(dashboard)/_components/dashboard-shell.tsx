@@ -49,7 +49,9 @@ export function DashboardShell({ children, navItems }: DashboardShellProps) {
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-(--text-secondary)">
               Denim Polo ERP
             </p>
-            <p className="text-sm font-medium text-foreground">Shop control room</p>
+            <p className="text-sm font-medium text-foreground">
+              Shop control room
+            </p>
           </div>
           <button
             type="button"
@@ -69,12 +71,18 @@ export function DashboardShell({ children, navItems }: DashboardShellProps) {
           <aside className="panel hidden rounded-4xl p-5 lg:block lg:p-6">
             <SidebarContent navItems={navItems} pathname={pathname} />
           </aside>
-          <main className="panel rounded-4xl p-4 sm:p-6 lg:p-8">{children}</main>
+          <main className="panel rounded-4xl p-4 sm:p-6 lg:p-8">
+            {children}
+          </main>
         </div>
       </div>
 
       {isMobileNavOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+        >
           <button
             type="button"
             aria-label="Close navigation menu"
@@ -122,7 +130,11 @@ type SidebarContentProps = {
   onNavigate?: () => void;
 };
 
-function SidebarContent({ navItems, pathname, onNavigate }: SidebarContentProps) {
+function SidebarContent({
+  navItems,
+  pathname,
+  onNavigate,
+}: SidebarContentProps) {
   return (
     <>
       <div className="space-y-4">
@@ -134,7 +146,8 @@ function SidebarContent({ navItems, pathname, onNavigate }: SidebarContentProps)
             Shop control room
           </h1>
           <p className="mt-3 text-sm leading-6 text-(--text-secondary)">
-            Sales, stock, expenses, returns, and partner visibility in one place.
+            Sales, stock, expenses, returns, and partner visibility in one
+            place.
           </p>
         </div>
         <nav className="grid gap-2">
@@ -160,10 +173,12 @@ function SidebarContent({ navItems, pathname, onNavigate }: SidebarContentProps)
         </nav>
       </div>
       <div className="mt-8 rounded-[1.6rem] bg-(--surface-accent) p-5 text-(--text-inverse)">
-        <p className="text-xs uppercase tracking-[0.3em] text-white/70">Operating note</p>
+        <p className="text-xs uppercase tracking-[0.3em] text-white/70">
+          Operating note
+        </p>
         <p className="mt-3 text-sm leading-6 text-white/88">
-          Sales lock stock immediately. Purchases update average cost. Returns never rewrite
-          history.
+          Sales lock stock immediately. Purchases update average cost. Returns
+          never rewrite history.
         </p>
         <SessionPanel />
       </div>
