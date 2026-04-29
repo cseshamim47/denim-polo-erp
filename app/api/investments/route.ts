@@ -43,7 +43,10 @@ function toRequiredApprovalCount(investment: {
 }
 
 const createInvestmentSchema = z.object({
-  amount: z.number().positive(),
+  amount: z
+    .number({ required_error: "Amount is required." })
+    .finite("Amount must be a valid number.")
+    .positive("Amount must be greater than 0."),
   investedAt: z.coerce.date(),
   note: z.string().trim().optional(),
 });
@@ -205,8 +208,10 @@ export async function POST(request: Request) {
   const parsed = createInvestmentSchema.safeParse(await request.json());
 
   if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+
     return NextResponse.json(
-      { error: parsed.error.flatten() },
+      { error: firstIssue?.message ?? "Invalid investment request." },
       { status: 400 },
     );
   }

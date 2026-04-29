@@ -81,7 +81,7 @@ export default function InvestmentsPage() {
     to: "",
   });
   const [investmentForm, setInvestmentForm] = useState({
-    amount: 0,
+    amount: "",
     investedAt: new Date().toISOString().slice(0, 10),
     note: "",
   });
@@ -157,12 +157,30 @@ export default function InvestmentsPage() {
   }, []);
 
   async function submitInvestment() {
+    const trimmedAmount = investmentForm.amount.trim();
+
+    if (!trimmedAmount) {
+      toast.error("Amount is required.");
+      return;
+    }
+
+    const numericAmount = Number(trimmedAmount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      toast.error("Enter a valid amount greater than 0.");
+      return;
+    }
+
     const loadingToastId = toast.loading("Saving investment...");
 
     const response = await fetch("/api/investments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(investmentForm),
+      body: JSON.stringify({
+        amount: numericAmount,
+        investedAt: investmentForm.investedAt,
+        note: investmentForm.note,
+      }),
     });
     const payload = await readJsonResponse<{ error?: string }>(response);
 
@@ -174,7 +192,7 @@ export default function InvestmentsPage() {
     }
 
     setInvestmentForm({
-      amount: 0,
+      amount: "",
       investedAt: new Date().toISOString().slice(0, 10),
       note: "",
     });
@@ -250,19 +268,24 @@ export default function InvestmentsPage() {
             Submit own investment
           </h3>
           <div className="mt-4 grid gap-4">
-            <input
-              className="field"
-              min={0}
-              onChange={(event) =>
-                setInvestmentForm((current) => ({
-                  ...current,
-                  amount: Number(event.target.value) || 0,
-                }))
-              }
-              placeholder="Amount"
-              type="number"
-              value={investmentForm.amount}
-            />
+            <label className="space-y-2 text-sm text-(--text-secondary)">
+              Amount <span className="text-red-500">*</span>
+              <input
+                className="field"
+                min={0.01}
+                onChange={(event) =>
+                  setInvestmentForm((current) => ({
+                    ...current,
+                    amount: event.target.value,
+                  }))
+                }
+                placeholder="Enter amount"
+                required
+                step="0.01"
+                type="number"
+                value={investmentForm.amount}
+              />
+            </label>
             <input
               className="field"
               onChange={(event) =>

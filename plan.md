@@ -1,5 +1,8 @@
 # Plan
 
-- [x] Add sales API filters for history table
-- [x] Render live sales history table with filters on sales entry page
-- [x] Validate with lint for touched files
+- [ ] Add mandatory amount validation for investments submit flow
+- [ ] Add visible amount title/label in investment form
+- [ ] Run lint/tests for touched investment files
+- [x] Add mandatory amount validation for investments submit flow
+- [x] Add visible amount title/label in investment form
+- [x] Run lint/tests for touched investment files
