@@ -83,7 +83,7 @@ export function DashboardShell({ children, navItems }: DashboardShellProps) {
           />
           <aside
             id="dashboard-mobile-nav"
-            className="panel absolute right-4 top-4 flex h-[calc(100vh-2rem)] w-[min(84vw,320px)] flex-col rounded-4xl p-5"
+            className="panel absolute right-4 top-4 flex h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] w-[min(84vw,320px)] flex-col rounded-4xl p-5"
           >
             <div className="flex shrink-0 items-start justify-between gap-4">
               <div>
@@ -102,7 +102,7 @@ export function DashboardShell({ children, navItems }: DashboardShellProps) {
                 Close
               </button>
             </div>
-            <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2 pb-[max(1.75rem,env(safe-area-inset-bottom))]">
               <SidebarContent
                 navItems={navItems}
                 pathname={pathname}
