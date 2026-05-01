@@ -44,7 +44,7 @@ function toRequiredApprovalCount(investment: {
 
 const createInvestmentSchema = z.object({
   amount: z
-    .number({ required_error: "Amount is required." })
+    .number({ error: "Amount is required." })
     .finite("Amount must be a valid number.")
     .positive("Amount must be greater than 0."),
   investedAt: z.coerce.date(),
