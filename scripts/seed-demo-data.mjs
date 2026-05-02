@@ -76,6 +76,20 @@ const variantSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+const purchaseApprovalSchema = new mongoose.Schema(
+  {
+    partnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    decision: { type: String, enum: ["approved", "rejected"], required: true },
+    decidedAt: { type: Date, required: true },
+    comment: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const purchaseSchema = new mongoose.Schema(
   {
     variantId: {
@@ -85,7 +99,17 @@ const purchaseSchema = new mongoose.Schema(
     },
     qty: { type: Number, required: true, min: 1 },
     costPerUnit: { type: mongoose.Schema.Types.Decimal128, required: true },
+    landedCostPerUnit: {
+      type: mongoose.Schema.Types.Decimal128,
+      required: true,
+    },
     totalCost: { type: mongoose.Schema.Types.Decimal128, required: true },
+    additionalCost: {
+      type: mongoose.Schema.Types.Decimal128,
+      required: true,
+      default: () => mongoose.Types.Decimal128.fromString("0"),
+    },
+    cashOutTotal: { type: mongoose.Schema.Types.Decimal128, required: true },
     billImageUrl: { type: String, default: null },
     purchaseDate: { type: Date, required: true },
     note: { type: String, default: null },
@@ -94,6 +118,20 @@ const purchaseSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      required: true,
+      default: "pending",
+    },
+    approvals: {
+      type: [purchaseApprovalSchema],
+      default: [],
+    },
+    requiredApproverIdsSnapshot: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    ],
+    requiredApprovalCountSnapshot: { type: Number, required: true, min: 1 },
   },
   { timestamps: true },
 );
@@ -491,7 +529,11 @@ async function createCatalog() {
   return { products, variants };
 }
 
-async function createPurchases({ variants, partner }) {
+async function createPurchases({ variants, partners }) {
+  requireDemoPartners(partners);
+
+  const submitter = partners[0];
+  const approvers = getOtherPartners(partners, submitter._id);
   const purchasePlan = [
     {
       variant: variants[0],
@@ -549,15 +591,29 @@ async function createPurchases({ variants, partner }) {
     currentVariant.avgCost = toDecimal128(result.newAvgCost);
     await currentVariant.save();
 
+    const totalCost = entry.qty * entry.costPerUnit;
+
     await Purchase.create({
       variantId: currentVariant._id,
       qty: entry.qty,
       costPerUnit: toDecimal128(entry.costPerUnit),
-      totalCost: toDecimal128(entry.qty * entry.costPerUnit),
+      landedCostPerUnit: toDecimal128(entry.costPerUnit),
+      totalCost: toDecimal128(totalCost),
+      additionalCost: toDecimal128(0),
+      cashOutTotal: toDecimal128(totalCost),
       billImageUrl: entry.billImageUrl,
       purchaseDate: entry.purchaseDate,
       note: entry.note,
-      createdBy: partner._id,
+      createdBy: submitter._id,
+      status: "approved",
+      approvals: approvers.map((partner, index) => ({
+        partnerId: partner._id,
+        decision: "approved",
+        decidedAt: new Date(entry.purchaseDate.getTime() + (index + 1) * 3600000),
+        comment: index === 0 ? "Stock received and checked" : "Approved",
+      })),
+      requiredApproverIdsSnapshot: approvers.map((partner) => partner._id),
+      requiredApprovalCountSnapshot: approvers.length,
     });
   }
 }
@@ -922,7 +978,7 @@ async function main() {
     products.map((product) => [product._id.toString(), product]),
   );
 
-  await createPurchases({ variants, partner: partners[0] });
+  await createPurchases({ variants, partners });
   const sales = await createSales({ variants, productsById, salesman });
   await createReturns({ sales, partner: partners[0] });
   await createExpenses({ partners });

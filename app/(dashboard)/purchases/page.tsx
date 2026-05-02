@@ -1,7 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { WheelEvent } from "react";
 import { toast } from "sonner";
+import { ChevronsUpDownIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 type Product = {
   id: string;
@@ -40,8 +64,23 @@ type PurchaseHistoryRecord = {
   color: string;
   qty: number;
   costPerUnit: number;
+  additionalCost: number;
   totalCost: number;
+  cashOutTotal: number;
   note: string | null;
+  status: "pending" | "approved" | "rejected";
+  createdById: string;
+  createdByName: string;
+  requiredApprovalCount: number;
+  approvalCount: number;
+  canReview: boolean;
+  approvals: Array<{
+    partnerId: string;
+    partnerName: string;
+    decision: "approved" | "rejected";
+    comment: string | null;
+    decidedAt: string;
+  }>;
 };
 
 type PurchasePayload = {
@@ -122,10 +161,25 @@ function buildBatchNote(payload: PurchasePayload) {
   return `Batch subtotal: ${payload.subtotal.toFixed(2)}`;
 }
 
+function statusClassName(status: PurchaseHistoryRecord["status"]) {
+  if (status === "approved") {
+    return "bg-emerald-100 text-emerald-700 ring-emerald-200";
+  }
+
+  if (status === "rejected") {
+    return "bg-rose-100 text-rose-700 ring-rose-200";
+  }
+
+  return "bg-amber-100 text-amber-800 ring-amber-200";
+}
+
+function preventNumberScroll(event: WheelEvent<HTMLInputElement>) {
+  event.currentTarget.blur();
+}
+
 export default function NewPurchasePage() {
   const nextItemIdRef = useRef(2);
-  const [openSkuItemId, setOpenSkuItemId] = useState<string | null>(null);
-  const ignoreNextSkuBlurRef = useRef(false);
+  const [openField, setOpenField] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [purchaseDate, setPurchaseDate] = useState(
@@ -417,7 +471,7 @@ export default function NewPurchasePage() {
       }
 
       setSuccess(
-        `Saved ${payload.items.length} item${payload.items.length === 1 ? "" : "s"} — subtotal ${currency(payload.subtotal)}.`,
+        `Submitted ${payload.items.length} item${payload.items.length === 1 ? "" : "s"} for approval — subtotal ${currency(payload.subtotal)}.`,
       );
       nextItemIdRef.current = 2;
       setItems([createItem("item-1")]);
@@ -428,6 +482,27 @@ export default function NewPurchasePage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function reviewPurchase(
+    purchaseId: string,
+    decision: "approved" | "rejected",
+  ) {
+    const response = await fetch("/api/purchases", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ purchaseId, decision }),
+    });
+
+    const payload = await readJsonResponse<{ error?: unknown }>(response);
+
+    if (!response.ok) {
+      setError(getErrorMessage(payload?.error));
+      return;
+    }
+
+    setSuccess(`Purchase ${decision}.`);
+    await loadHistory();
   }
 
   return (
@@ -479,15 +554,6 @@ export default function NewPurchasePage() {
           {items.map((item, index) => {
             const matchedVariant = getMatchingVariant(item);
             const rowVariants = getProductVariants(item.productId);
-            const skuDropdownVariants = item.sku
-              ? variants
-                  .filter((variant) =>
-                    variant.sku
-                      .toLocaleLowerCase()
-                      .includes(item.sku.toLocaleLowerCase()),
-                  )
-                  .slice(0, 40)
-              : variants.slice(0, 40);
             const sizeOptions = Array.from(
               new Set(rowVariants.map((variant) => variant.size)),
             );
@@ -523,50 +589,65 @@ export default function NewPurchasePage() {
                   </button>
                 </div>
 
-                {/* SKU + Product */}
-                <div className="relative mt-3 grid gap-1.5 text-sm font-medium text-foreground">
+                {/* SKU */}
+                <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
                   SKU
-                  <input
-                    className="field"
-                    placeholder="Type or pick an SKU"
-                    value={item.sku}
-                    onBlur={() => {
-                      if (ignoreNextSkuBlurRef.current) {
-                        ignoreNextSkuBlurRef.current = false;
-                        return;
-                      }
-                      window.setTimeout(() => setOpenSkuItemId(null), 120);
-                    }}
-                    onChange={(event) => {
-                      updateItemSku(item.id, event.target.value);
-                      setOpenSkuItemId(item.id);
-                    }}
-                    onFocus={() => setOpenSkuItemId(item.id)}
-                  />
-                  {openSkuItemId === item.id &&
-                  skuDropdownVariants.length > 0 ? (
-                    <div className="absolute top-full z-10 mt-1 grid max-h-64 w-full gap-1 overflow-y-auto rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                      {skuDropdownVariants.map((variant) => (
-                        <button
-                          key={variant.id}
-                          className="rounded-xl px-3 py-2 text-left text-sm text-foreground hover:bg-(--surface-accent-soft)"
-                          onPointerDown={(event) => {
-                            event.preventDefault();
-                            ignoreNextSkuBlurRef.current = true;
-                            updateItemSku(item.id, variant.sku);
-                            setOpenSkuItemId(null);
-                          }}
-                          type="button"
-                        >
-                          <span className="font-medium">{variant.sku}</span>
-                          <span className="ml-2 text-(--text-secondary)">
-                            {getProductName(variant.productId)} ·{" "}
-                            {variant.color} · {variant.size}
+                  <Popover
+                    open={openField === `sku-${item.id}`}
+                    onOpenChange={(open) =>
+                      setOpenField(open ? `sku-${item.id}` : null)
+                    }
+                  >
+                    <PopoverTrigger asChild>
+                      <button
+                        className="field flex items-center justify-between text-left"
+                        type="button"
+                      >
+                        {item.sku ? (
+                          <span>{item.sku}</span>
+                        ) : (
+                          <span className="text-(--text-secondary)">
+                            Type or pick an SKU
                           </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                        )}
+                        <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-[--radix-popover-trigger-width] p-0"
+                      align="start"
+                    >
+                      <Command>
+                        <CommandInput placeholder="Search SKU…" />
+                        <CommandList>
+                          <CommandEmpty>No SKU found.</CommandEmpty>
+                          <CommandGroup>
+                            {variants.map((variant) => (
+                              <CommandItem
+                                key={variant.id}
+                                value={`${variant.sku} ${getProductName(variant.productId)} ${variant.color} ${variant.size}`}
+                                data-checked={
+                                  item.sku === variant.sku ? "true" : undefined
+                                }
+                                onSelect={() => {
+                                  updateItemSku(item.id, variant.sku);
+                                  setOpenField(null);
+                                }}
+                              >
+                                <span className="font-medium">
+                                  {variant.sku}
+                                </span>
+                                <span className="ml-2 text-(--text-secondary)">
+                                  {getProductName(variant.productId)} ·{" "}
+                                  {variant.color} · {variant.size}
+                                </span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 <div className="mt-3">
@@ -585,89 +666,202 @@ export default function NewPurchasePage() {
                   </label>
                 </div>
 
-                <div className="mt-3">
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Product
-                    <select
-                      className="field"
-                      value={item.productId}
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          productId: event.target.value,
-                          sku: "",
-                          size: "",
-                          color: "",
-                        })
-                      }
+                <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
+                  Product
+                  <Popover
+                    open={openField === `product-${item.id}`}
+                    onOpenChange={(open) =>
+                      setOpenField(open ? `product-${item.id}` : null)
+                    }
+                  >
+                    <PopoverTrigger asChild>
+                      <button
+                        className="field flex items-center justify-between text-left"
+                        type="button"
+                      >
+                        {item.productId ? (
+                          <span>
+                            {products.find((p) => p.id === item.productId)
+                              ?.name ?? ""}{" "}
+                            ·{" "}
+                            {products.find((p) => p.id === item.productId)
+                              ?.category ?? ""}
+                          </span>
+                        ) : (
+                          <span className="text-(--text-secondary)">
+                            Select a product…
+                          </span>
+                        )}
+                        <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-[--radix-popover-trigger-width] p-0"
+                      align="start"
                     >
-                      <option value="">Select a product…</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} · {product.category}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      <Command>
+                        <CommandInput placeholder="Search product…" />
+                        <CommandList>
+                          <CommandEmpty>No product found.</CommandEmpty>
+                          <CommandGroup>
+                            {products.map((product) => (
+                              <CommandItem
+                                key={product.id}
+                                value={`${product.name} ${product.category}`}
+                                data-checked={
+                                  item.productId === product.id
+                                    ? "true"
+                                    : undefined
+                                }
+                                onSelect={() => {
+                                  updateItem(item.id, {
+                                    productId: product.id,
+                                    sku: "",
+                                    size: "",
+                                    color: "",
+                                  });
+                                  setOpenField(null);
+                                }}
+                              >
+                                {product.name} · {product.category}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {/* Size + Color */}
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                  <div className="grid gap-1.5 text-sm font-medium text-foreground">
                     Size
-                    <input
-                      className="field"
-                      list={`size-options-${item.id}`}
-                      placeholder="e.g. M, 32"
-                      value={item.size}
-                      onChange={(event) => {
-                        const nextSize = event.target.value.toUpperCase();
-                        const nextVariant = variants.find(
-                          (variant) =>
-                            variant.productId === item.productId &&
-                            variant.size === nextSize &&
-                            variant.color === item.color.trim().toUpperCase(),
-                        );
+                    <Popover
+                      open={openField === `size-${item.id}`}
+                      onOpenChange={(open) =>
+                        setOpenField(open ? `size-${item.id}` : null)
+                      }
+                    >
+                      <PopoverTrigger asChild>
+                        <button
+                          className="field flex items-center justify-between text-left"
+                          type="button"
+                        >
+                          {item.size ? (
+                            <span>{item.size}</span>
+                          ) : (
+                            <span className="text-(--text-secondary)">
+                              e.g. M, 32
+                            </span>
+                          )}
+                          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-[--radix-popover-trigger-width] p-0"
+                        align="start"
+                      >
+                        <Command>
+                          <CommandInput placeholder="Search size…" />
+                          <CommandList>
+                            <CommandEmpty>No size found.</CommandEmpty>
+                            <CommandGroup>
+                              {sizeOptions.map((size) => (
+                                <CommandItem
+                                  key={size}
+                                  value={size}
+                                  data-checked={
+                                    item.size === size ? "true" : undefined
+                                  }
+                                  onSelect={() => {
+                                    const nextVariant = variants.find(
+                                      (v) =>
+                                        v.productId === item.productId &&
+                                        v.size === size &&
+                                        v.color ===
+                                          item.color.trim().toUpperCase(),
+                                    );
+                                    updateItem(item.id, {
+                                      size,
+                                      sku: nextVariant?.sku ?? item.sku,
+                                    });
+                                    setOpenField(null);
+                                  }}
+                                >
+                                  {size}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
 
-                        updateItem(item.id, {
-                          size: nextSize,
-                          sku: nextVariant?.sku ?? item.sku,
-                        });
-                      }}
-                    />
-                    <datalist id={`size-options-${item.id}`}>
-                      {sizeOptions.map((size) => (
-                        <option key={size} value={size} />
-                      ))}
-                    </datalist>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                  <div className="grid gap-1.5 text-sm font-medium text-foreground">
                     Color
-                    <input
-                      className="field"
-                      list={`color-options-${item.id}`}
-                      placeholder="e.g. BLK, RED"
-                      value={item.color}
-                      onChange={(event) => {
-                        const nextColor = event.target.value.toUpperCase();
-                        const nextVariant = variants.find(
-                          (variant) =>
-                            variant.productId === item.productId &&
-                            variant.size === item.size.trim().toUpperCase() &&
-                            variant.color === nextColor,
-                        );
-
-                        updateItem(item.id, {
-                          color: nextColor,
-                          sku: nextVariant?.sku ?? item.sku,
-                        });
-                      }}
-                    />
-                    <datalist id={`color-options-${item.id}`}>
-                      {colorOptions.map((color) => (
-                        <option key={color} value={color} />
-                      ))}
-                    </datalist>
-                  </label>
+                    <Popover
+                      open={openField === `color-${item.id}`}
+                      onOpenChange={(open) =>
+                        setOpenField(open ? `color-${item.id}` : null)
+                      }
+                    >
+                      <PopoverTrigger asChild>
+                        <button
+                          className="field flex items-center justify-between text-left"
+                          type="button"
+                        >
+                          {item.color ? (
+                            <span>{item.color}</span>
+                          ) : (
+                            <span className="text-(--text-secondary)">
+                              e.g. BLK, RED
+                            </span>
+                          )}
+                          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-[--radix-popover-trigger-width] p-0"
+                        align="start"
+                      >
+                        <Command>
+                          <CommandInput placeholder="Search color…" />
+                          <CommandList>
+                            <CommandEmpty>No color found.</CommandEmpty>
+                            <CommandGroup>
+                              {colorOptions.map((color) => (
+                                <CommandItem
+                                  key={color}
+                                  value={color}
+                                  data-checked={
+                                    item.color === color ? "true" : undefined
+                                  }
+                                  onSelect={() => {
+                                    const nextVariant = variants.find(
+                                      (v) =>
+                                        v.productId === item.productId &&
+                                        v.size ===
+                                          item.size.trim().toUpperCase() &&
+                                        v.color === color,
+                                    );
+                                    updateItem(item.id, {
+                                      color,
+                                      sku: nextVariant?.sku ?? item.sku,
+                                    });
+                                    setOpenField(null);
+                                  }}
+                                >
+                                  {color}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
 
                 {/* Qty + Cost + Row total */}
@@ -677,6 +871,7 @@ export default function NewPurchasePage() {
                     <input
                       className="field"
                       min={1}
+                      onWheel={preventNumberScroll}
                       type="number"
                       value={item.qty}
                       onChange={(event) =>
@@ -691,6 +886,7 @@ export default function NewPurchasePage() {
                     <input
                       className="field"
                       min={0}
+                      onWheel={preventNumberScroll}
                       placeholder="0"
                       step="1"
                       type="number"
@@ -891,49 +1087,135 @@ export default function NewPurchasePage() {
 
         <div className="mt-4 grid gap-3 md:hidden">
           {isHistoryLoading ? (
-            <p className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4 text-sm text-(--text-secondary)">
-              Loading purchase history...
-            </p>
+            <Card className="gap-0 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-0 shadow-none">
+              <CardContent className="px-4 py-5 text-sm text-(--text-secondary)">
+                Loading purchase history...
+              </CardContent>
+            </Card>
           ) : purchaseHistory.length === 0 ? (
-            <p className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4 text-sm text-(--text-secondary)">
-              No purchases found for the selected filters.
-            </p>
+            <Card className="gap-0 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-0 shadow-none">
+              <CardContent className="px-4 py-5 text-sm text-(--text-secondary)">
+                No purchases found for the selected filters.
+              </CardContent>
+            </Card>
           ) : (
             purchaseHistory.map((record) => (
-              <article
+              <Card
                 key={record.id}
-                className="rounded-[1.2rem] border border-(--stroke-soft) bg-white p-4"
+                className="gap-4 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-4 shadow-none"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-foreground">
-                      {record.sku}
-                    </p>
-                    <p className="mt-1 text-sm text-(--text-secondary)">
-                      {record.productName} · {record.size} / {record.color}
-                    </p>
+                <CardHeader className="px-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-base">{record.sku}</CardTitle>
+                      <p className="mt-1 text-sm text-(--text-secondary)">
+                        {record.productName} · {record.size} / {record.color}
+                      </p>
+                      <p className="mt-1 text-xs text-(--text-secondary)">
+                        Submitted by {record.createdByName}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-foreground">
+                        {currency(record.totalCost)}
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className={`mt-2 ${statusClassName(record.status)}`}
+                      >
+                        {record.status}
+                      </Badge>
+                    </div>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {currency(record.totalCost)}
-                  </p>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
-                  <p>
-                    Date:{" "}
-                    {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
-                  </p>
-                  <p className="text-right">Qty: {record.qty}</p>
-                  <p>Cost: {currency(record.costPerUnit)}</p>
-                  <p className="text-right">
-                    Subtotal: {currency(record.totalCost)}
-                  </p>
-                </div>
-                {(record.note ?? "").trim() ? (
-                  <p className="mt-3 text-xs leading-6 text-(--text-secondary)">
-                    {record.note}
-                  </p>
-                ) : null}
-              </article>
+                </CardHeader>
+                <CardContent className="grid gap-4 px-4">
+                  <div className="grid grid-cols-2 gap-3 rounded-xl bg-(--surface-accent-soft) p-3 text-sm">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
+                        Date
+                      </p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
+                        Qty
+                      </p>
+                      <p className="mt-1 font-medium text-foreground">{record.qty}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
+                        Cost
+                      </p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {currency(record.costPerUnit)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
+                        Cash out
+                      </p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {currency(record.cashOutTotal)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
+                      Approval progress
+                    </p>
+                    <p className="text-sm font-medium text-foreground">
+                      {record.approvalCount}/{record.requiredApprovalCount}
+                    </p>
+                    <div className="grid gap-1.5 text-xs text-(--text-secondary)">
+                      {record.approvals.length > 0 ? (
+                        record.approvals.map((approval) => (
+                          <span key={`${record.id}-${approval.partnerId}`}>
+                            {approval.partnerName} {approval.decision}
+                          </span>
+                        ))
+                      ) : (
+                        <span>No review yet</span>
+                      )}
+                    </div>
+                  </div>
+                  {(record.note ?? "").trim() ? (
+                    <div className="rounded-xl border border-(--stroke-soft) px-3 py-2.5 text-xs leading-6 text-(--text-secondary)">
+                      {record.note}
+                    </div>
+                  ) : null}
+                </CardContent>
+                <CardFooter className="px-4">
+                  <div className="w-full">
+                    {record.canReview ? (
+                      <div className="grid w-full grid-cols-2 gap-2">
+                        <Button
+                          className="w-full"
+                          size="sm"
+                          onClick={() => void reviewPurchase(record.id, "approved")}
+                          type="button"
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          className="w-full"
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => void reviewPurchase(record.id, "rejected")}
+                          type="button"
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-(--surface-accent-soft) px-3 py-2 text-center text-xs text-(--text-secondary)">
+                        No action available
+                      </div>
+                    )}
+                  </div>
+                </CardFooter>
+              </Card>
             ))
           )}
         </div>
@@ -951,7 +1233,13 @@ export default function NewPurchasePage() {
                 <th className="px-3 py-2 text-right font-semibold">Qty</th>
                 <th className="px-3 py-2 text-right font-semibold">Cost</th>
                 <th className="px-3 py-2 text-right font-semibold">Subtotal</th>
+                <th className="px-3 py-2 text-left font-semibold">Status</th>
+                <th className="px-3 py-2 text-left font-semibold">Approvals</th>
+                <th className="px-3 py-2 text-left font-semibold">
+                  Submitted by
+                </th>
                 <th className="px-3 py-2 text-left font-semibold">Note</th>
+                <th className="px-3 py-2 text-center font-semibold">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-(--stroke-soft) bg-white">
@@ -959,7 +1247,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={8}
+                    colSpan={12}
                   >
                     Loading purchase history...
                   </td>
@@ -968,7 +1256,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={8}
+                    colSpan={12}
                   >
                     No purchases found for the selected filters.
                   </td>
@@ -996,8 +1284,63 @@ export default function NewPurchasePage() {
                     <td className="px-3 py-2 text-right">
                       {currency(record.totalCost)}
                     </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ring-1 ${statusClassName(record.status)}`}
+                      >
+                        {record.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-(--text-secondary)">
+                      <div className="grid gap-1">
+                        <span className="font-medium text-foreground">
+                          {record.approvalCount}/{record.requiredApprovalCount}
+                        </span>
+                        {record.approvals.length > 0 ? (
+                          record.approvals.map((approval) => (
+                            <span key={`${record.id}-${approval.partnerId}`}>
+                              {approval.partnerName} {approval.decision}
+                            </span>
+                          ))
+                        ) : (
+                          <span>No review yet</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-(--text-secondary)">
+                      {record.createdByName}
+                    </td>
                     <td className="px-3 py-2 text-xs text-(--text-secondary)">
                       {(record.note ?? "").trim() || "-"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {record.canReview ? (
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              void reviewPurchase(record.id, "approved")
+                            }
+                            type="button"
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              void reviewPurchase(record.id, "rejected")
+                            }
+                            type="button"
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-center text-xs text-(--text-secondary)">
+                          No action
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

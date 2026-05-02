@@ -1,7 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronsUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type DeleteRequest = {
   status: "none" | "pending" | "approved" | "rejected";
@@ -100,9 +132,42 @@ function normalizeSizes(sizesText: string) {
 
 const PRODUCTS_PER_PAGE = 8;
 
+const stockFilterOptions = [
+  { value: "all", label: "All stock states" },
+  { value: "in-stock", label: "In stock only" },
+  { value: "zero-stock", label: "Zero stock only" },
+] as const;
+
+const deleteStatusOptions = [
+  { value: "all", label: "All delete states" },
+  { value: "none", label: "No request" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+] as const;
+
+function getRequestBadgeClassName(
+  status: "none" | "pending" | "approved" | "rejected",
+) {
+  if (status === "approved") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "rejected") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (status === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [openField, setOpenField] = useState<string | null>(null);
 
   const [activeListTab, setActiveListTab] = useState<"products" | "variants">(
     "variants",
@@ -143,20 +208,15 @@ export default function ProductsPage() {
     sizesText: "",
     sellingPrice: 0,
   });
+  const [productNameSearch, setProductNameSearch] = useState("");
+  const [productCategorySearch, setProductCategorySearch] = useState("");
+  const [variantColorSearch, setVariantColorSearch] = useState("");
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [updatingVariant, setUpdatingVariant] = useState<Variant | null>(null);
   const [updateSellingPriceInput, setUpdateSellingPriceInput] = useState("");
   const [updateSellingPriceError, setUpdateSellingPriceError] = useState<
     string | null
   >(null);
-
-  const [isNameDropdownOpen, setIsNameDropdownOpen] = useState(false);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [isColorDropdownOpen, setIsColorDropdownOpen] = useState(false);
-
-  const ignoreNextNameBlurRef = useRef(false);
-  const ignoreNextCategoryBlurRef = useRef(false);
-  const ignoreNextColorBlurRef = useRef(false);
 
   const nameSuggestions = useMemo(
     () =>
@@ -190,30 +250,6 @@ export default function ProductsPage() {
       ),
     ).sort((left, right) => left.localeCompare(right));
   }, [variantForm.productId, variants]);
-
-  const normalizedName = productForm.name.trim().toLocaleLowerCase();
-  const filteredNameSuggestions = nameSuggestions.filter((name) => {
-    if (!normalizedName) {
-      return true;
-    }
-    return name.toLocaleLowerCase().includes(normalizedName);
-  });
-
-  const normalizedCategory = productForm.category.trim().toLocaleLowerCase();
-  const filteredCategorySuggestions = categorySuggestions.filter((category) => {
-    if (!normalizedCategory) {
-      return true;
-    }
-    return category.toLocaleLowerCase().includes(normalizedCategory);
-  });
-
-  const normalizedColor = variantForm.color.trim().toLocaleLowerCase();
-  const filteredColorSuggestions = colorSuggestions.filter((color) => {
-    if (!normalizedColor) {
-      return true;
-    }
-    return color.toLocaleLowerCase().includes(normalizedColor);
-  });
 
   const productStockById = useMemo(() => {
     const map = new Map<string, number>();
@@ -737,125 +773,185 @@ export default function ProductsPage() {
           </h3>
 
           <div className="mt-4 space-y-4">
-            <div className="relative">
+            <Popover
+              open={openField === "product-name"}
+              onOpenChange={(open) => {
+                setOpenField(open ? "product-name" : null);
+                if (open) {
+                  setProductNameSearch("");
+                }
+              }}
+            >
               <label className="mb-1 block text-sm text-[var(--text-secondary)]">
                 Product name
               </label>
-              <input
-                className="field"
-                placeholder="Product name"
-                value={productForm.name}
-                onBlur={() => {
-                  if (ignoreNextNameBlurRef.current) {
-                    ignoreNextNameBlurRef.current = false;
-                    return;
-                  }
-                  window.setTimeout(() => setIsNameDropdownOpen(false), 120);
-                }}
-                onChange={(event) => {
-                  setProductForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }));
-                  setProductErrors((current) => ({
-                    ...current,
-                    name: undefined,
-                  }));
-                  setIsNameDropdownOpen(true);
-                }}
-                onFocus={() => setIsNameDropdownOpen(true)}
-              />
-              {isNameDropdownOpen && filteredNameSuggestions.length > 0 ? (
-                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                  {filteredNameSuggestions.map((name) => (
-                    <button
-                      key={name}
-                      className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        ignoreNextNameBlurRef.current = true;
-                        setProductForm((current) => ({ ...current, name }));
-                        setProductErrors((current) => ({
-                          ...current,
-                          name: undefined,
-                        }));
-                        setIsNameDropdownOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <PopoverTrigger asChild>
+                <button className="field flex items-center justify-between" type="button">
+                  <span>
+                    {productForm.name.trim() || "Product name"}
+                  </span>
+                  <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Search or enter product name..."
+                    value={productNameSearch}
+                    onValueChange={(value) => {
+                      setProductNameSearch(value);
+                    }}
+                  />
+                  <CommandList>
+                    <CommandEmpty>Type a new product name or pick one below.</CommandEmpty>
+                    <CommandGroup>
+                      {productNameSearch.trim() &&
+                      !nameSuggestions.some(
+                        (name) => name === productNameSearch.trim(),
+                      ) ? (
+                        <CommandItem
+                          value={productNameSearch}
+                          onSelect={() => {
+                            setProductForm((current) => ({
+                              ...current,
+                              name: productNameSearch.trim(),
+                            }));
+                            setProductErrors((current) => ({
+                              ...current,
+                              name: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          Use &quot;{productNameSearch.trim()}&quot;
+                        </CommandItem>
+                      ) : null}
+                        {nameSuggestions.map((name) => (
+                          <CommandItem
+                            key={name}
+                            value={name}
+                            data-checked={
+                              productForm.name === name ? "true" : undefined
+                            }
+                            onSelect={() => {
+                              setProductForm((current) => ({
+                                ...current,
+                                name,
+                              }));
+                              setProductErrors((current) => ({
+                                ...current,
+                                name: undefined,
+                              }));
+                              setOpenField(null);
+                            }}
+                          >
+                            {name}
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
               {productErrors.name ? (
                 <p className="mt-2 text-sm text-red-600">
                   {productErrors.name}
                 </p>
               ) : null}
-            </div>
+            </Popover>
 
-            <div className="relative">
+            <Popover
+              open={openField === "product-category"}
+              onOpenChange={(open) => {
+                setOpenField(open ? "product-category" : null);
+                if (open) {
+                  setProductCategorySearch("");
+                }
+              }}
+            >
               <label className="mb-1 block text-sm text-[var(--text-secondary)]">
                 Category
               </label>
-              <input
-                className="field"
-                placeholder="Category"
-                value={productForm.category}
-                onBlur={() => {
-                  if (ignoreNextCategoryBlurRef.current) {
-                    ignoreNextCategoryBlurRef.current = false;
-                    return;
-                  }
-                  window.setTimeout(
-                    () => setIsCategoryDropdownOpen(false),
-                    120,
-                  );
-                }}
-                onChange={(event) => {
-                  setProductForm((current) => ({
-                    ...current,
-                    category: event.target.value,
-                  }));
-                  setProductErrors((current) => ({
-                    ...current,
-                    category: undefined,
-                  }));
-                  setIsCategoryDropdownOpen(true);
-                }}
-                onFocus={() => setIsCategoryDropdownOpen(true)}
-              />
-              {isCategoryDropdownOpen &&
-              filteredCategorySuggestions.length > 0 ? (
-                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                  {filteredCategorySuggestions.map((category) => (
-                    <button
-                      key={category}
-                      className="rounded-xl px-3 py-2 text-left text-sm hover:bg-(--surface-accent-soft)"
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        ignoreNextCategoryBlurRef.current = true;
-                        setProductForm((current) => ({ ...current, category }));
-                        setProductErrors((current) => ({
-                          ...current,
-                          category: undefined,
-                        }));
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <PopoverTrigger asChild>
+                <button className="field flex items-center justify-between" type="button">
+                  <span>
+                    {productForm.category.trim() || "Category"}
+                  </span>
+                  <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Search or enter category..."
+                    value={productCategorySearch}
+                    onValueChange={(value) => {
+                      setProductCategorySearch(value);
+                    }}
+                  />
+                  <CommandList>
+                    <CommandEmpty>Type a new category or pick one below.</CommandEmpty>
+                    <CommandGroup>
+                      {productCategorySearch.trim() &&
+                      !categorySuggestions.some(
+                        (category) => category === productCategorySearch.trim(),
+                      ) ? (
+                        <CommandItem
+                          value={productCategorySearch}
+                          onSelect={() => {
+                            setProductForm((current) => ({
+                              ...current,
+                              category: productCategorySearch.trim(),
+                            }));
+                            setProductErrors((current) => ({
+                              ...current,
+                              category: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          Use &quot;{productCategorySearch.trim()}&quot;
+                        </CommandItem>
+                      ) : null}
+                        {categorySuggestions.map((category) => (
+                          <CommandItem
+                            key={category}
+                            value={category}
+                            data-checked={
+                              productForm.category === category
+                                ? "true"
+                                : undefined
+                            }
+                            onSelect={() => {
+                              setProductForm((current) => ({
+                                ...current,
+                                category,
+                              }));
+                              setProductErrors((current) => ({
+                                ...current,
+                                category: undefined,
+                              }));
+                              setOpenField(null);
+                            }}
+                          >
+                            {category}
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
               {productErrors.category ? (
                 <p className="mt-2 text-sm text-red-600">
                   {productErrors.category}
                 </p>
               ) : null}
-            </div>
+            </Popover>
 
             <div>
               <label className="mb-1 block text-sm text-[var(--text-secondary)]">
@@ -891,92 +987,162 @@ export default function ProductsPage() {
 
           <div className="mt-4 space-y-4">
             <label className="mb-1 block text-sm text-white/80">Product</label>
-            <select
-              className="field text-[var(--text-primary)]"
-              value={variantForm.productId}
-              onChange={(event) => {
-                const nextProductId = event.target.value;
-                setVariantForm((current) => ({
-                  ...current,
-                  productId: nextProductId,
-                  color: "",
-                }));
-                setVariantErrors((current) => ({
-                  ...current,
-                  productId: undefined,
-                  color: undefined,
-                }));
-                setIsColorDropdownOpen(false);
-              }}
+            <Popover
+              open={openField === "variant-product"}
+              onOpenChange={(open) =>
+                setOpenField(open ? "variant-product" : null)
+              }
             >
-              <option value="">Pick product</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
+              <PopoverTrigger asChild>
+                <button
+                  className="field flex items-center justify-between text-[var(--text-primary)]"
+                  type="button"
+                >
+                  <span>
+                    {variantForm.productId
+                      ? (products.find(
+                          (product) => product.id === variantForm.productId,
+                        )?.name ?? "Pick product")
+                      : "Pick product"}
+                  </span>
+                  <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput placeholder="Search product..." />
+                  <CommandList>
+                    <CommandEmpty>No product found.</CommandEmpty>
+                    <CommandGroup>
+                      {products.map((product) => (
+                        <CommandItem
+                          key={product.id}
+                          value={`${product.name} ${product.category}`}
+                          data-checked={
+                            variantForm.productId === product.id
+                              ? "true"
+                              : undefined
+                          }
+                          onSelect={() => {
+                            setVariantForm((current) => ({
+                              ...current,
+                              productId: product.id,
+                              color: "",
+                            }));
+                            setVariantErrors((current) => ({
+                              ...current,
+                              productId: undefined,
+                              color: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          {product.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {variantErrors.productId ? (
               <p className="mt-2 text-sm text-red-200">
                 {variantErrors.productId}
               </p>
             ) : null}
 
-            <div className="relative">
+            <Popover
+              open={openField === "variant-color"}
+              onOpenChange={(open) => {
+                setOpenField(open ? "variant-color" : null);
+                if (open) {
+                  setVariantColorSearch("");
+                }
+              }}
+            >
               <label className="mb-1 block text-sm text-white/80">Color</label>
-              <input
-                className="field text-[var(--text-primary)]"
-                placeholder="Color"
-                value={variantForm.color}
-                onBlur={() => {
-                  if (ignoreNextColorBlurRef.current) {
-                    ignoreNextColorBlurRef.current = false;
-                    return;
-                  }
-                  window.setTimeout(() => setIsColorDropdownOpen(false), 120);
-                }}
-                onChange={(event) => {
-                  setVariantForm((current) => ({
-                    ...current,
-                    color: event.target.value,
-                  }));
-                  setVariantErrors((current) => ({
-                    ...current,
-                    color: undefined,
-                  }));
-                  setIsColorDropdownOpen(true);
-                }}
-                onFocus={() => setIsColorDropdownOpen(true)}
-              />
-              {isColorDropdownOpen && filteredColorSuggestions.length > 0 ? (
-                <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
-                  {filteredColorSuggestions.map((color) => (
-                    <button
-                      key={color}
-                      className="rounded-xl px-3 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-(--surface-accent-soft)"
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        ignoreNextColorBlurRef.current = true;
-                        setVariantForm((current) => ({ ...current, color }));
-                        setVariantErrors((current) => ({
-                          ...current,
-                          color: undefined,
-                        }));
-                        setIsColorDropdownOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {color}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <PopoverTrigger asChild>
+                <button
+                  className="field flex items-center justify-between text-[var(--text-primary)]"
+                  type="button"
+                >
+                  <span>
+                    {variantForm.color.trim() || "Color"}
+                  </span>
+                  <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Search or enter color..."
+                    value={variantColorSearch}
+                    onValueChange={(value) => {
+                      setVariantColorSearch(value);
+                    }}
+                  />
+                  <CommandList>
+                    <CommandEmpty>Type a new color or pick one below.</CommandEmpty>
+                    <CommandGroup>
+                      {variantColorSearch.trim() &&
+                      !colorSuggestions.some(
+                        (color) => color === variantColorSearch.trim(),
+                      ) ? (
+                        <CommandItem
+                          value={variantColorSearch}
+                          onSelect={() => {
+                            setVariantForm((current) => ({
+                              ...current,
+                              color: variantColorSearch.trim(),
+                            }));
+                            setVariantErrors((current) => ({
+                              ...current,
+                              color: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          Use &quot;{variantColorSearch.trim()}&quot;
+                        </CommandItem>
+                      ) : null}
+                        {colorSuggestions.map((color) => (
+                          <CommandItem
+                            key={color}
+                            value={color}
+                            data-checked={
+                              variantForm.color === color ? "true" : undefined
+                            }
+                            onSelect={() => {
+                              setVariantForm((current) => ({
+                                ...current,
+                                color,
+                              }));
+                              setVariantErrors((current) => ({
+                                ...current,
+                                color: undefined,
+                              }));
+                              setOpenField(null);
+                            }}
+                          >
+                            {color}
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
               {variantErrors.color ? (
                 <p className="mt-2 text-sm text-red-200">
                   {variantErrors.color}
                 </p>
               ) : null}
-            </div>
+            </Popover>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -1108,56 +1274,140 @@ export default function ProductsPage() {
                     setProductPage(1);
                   }}
                 />
-                <select
-                  className="field"
-                  value={productFilterCategory}
-                  onChange={(event) => {
-                    setProductFilterCategory(event.target.value);
-                    setProductPage(1);
-                  }}
+                <Popover
+                  open={openField === "product-filter-category"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "product-filter-category" : null)
+                  }
                 >
-                  <option value="all">All categories</option>
-                  {productCategoryOptions.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="field"
-                  value={productFilterStock}
-                  onChange={(event) => {
-                    setProductFilterStock(
-                      event.target.value as "all" | "in-stock" | "zero-stock",
-                    );
-                    setProductPage(1);
-                  }}
+                  <PopoverTrigger asChild>
+                    <button className="field flex items-center justify-between" type="button">
+                      <span>
+                        {productFilterCategory === "all"
+                          ? "All categories"
+                          : productFilterCategory}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search category..." />
+                      <CommandList>
+                        <CommandEmpty>No category found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="All categories"
+                            data-checked={productFilterCategory === "all" ? "true" : undefined}
+                            onSelect={() => {
+                              setProductFilterCategory("all");
+                              setProductPage(1);
+                              setOpenField(null);
+                            }}
+                          >
+                            All categories
+                          </CommandItem>
+                          {productCategoryOptions.map((category) => (
+                            <CommandItem
+                              key={category}
+                              value={category}
+                              data-checked={productFilterCategory === category ? "true" : undefined}
+                              onSelect={() => {
+                                setProductFilterCategory(category);
+                                setProductPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {category}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Popover
+                  open={openField === "product-filter-stock"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "product-filter-stock" : null)
+                  }
                 >
-                  <option value="all">All stock states</option>
-                  <option value="in-stock">In stock only</option>
-                  <option value="zero-stock">Zero stock only</option>
-                </select>
-                <select
-                  className="field sm:col-span-2"
-                  value={productFilterDeleteStatus}
-                  onChange={(event) => {
-                    setProductFilterDeleteStatus(
-                      event.target.value as
-                        | "all"
-                        | "none"
-                        | "pending"
-                        | "approved"
-                        | "rejected",
-                    );
-                    setProductPage(1);
-                  }}
+                  <PopoverTrigger asChild>
+                    <button className="field flex items-center justify-between" type="button">
+                      <span>
+                        {stockFilterOptions.find(
+                          (option) => option.value === productFilterStock,
+                        )?.label ?? "All stock states"}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search stock state..." />
+                      <CommandList>
+                        <CommandEmpty>No stock option found.</CommandEmpty>
+                        <CommandGroup>
+                          {stockFilterOptions.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={option.label}
+                              data-checked={productFilterStock === option.value ? "true" : undefined}
+                              onSelect={() => {
+                                setProductFilterStock(option.value);
+                                setProductPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {option.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Popover
+                  open={openField === "product-filter-delete"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "product-filter-delete" : null)
+                  }
                 >
-                  <option value="all">All delete states</option>
-                  <option value="none">No request</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
+                  <PopoverTrigger asChild>
+                    <button className="field sm:col-span-2 flex items-center justify-between" type="button">
+                      <span>
+                        {deleteStatusOptions.find(
+                          (option) => option.value === productFilterDeleteStatus,
+                        )?.label ?? "All delete states"}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search delete status..." />
+                      <CommandList>
+                        <CommandEmpty>No status found.</CommandEmpty>
+                        <CommandGroup>
+                          {deleteStatusOptions.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={option.label}
+                              data-checked={productFilterDeleteStatus === option.value ? "true" : undefined}
+                              onSelect={() => {
+                                setProductFilterDeleteStatus(option.value);
+                                setProductPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {option.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             ) : null}
 
@@ -1198,15 +1448,19 @@ export default function ProductsPage() {
                         </p>
 
                         <div className="mt-3">
-                          {deleteRequest?.status && deleteRequest.status !== "none" ? (
+                          {deleteRequest?.status &&
+                          deleteRequest.status !== "none" ? (
                             <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
                               <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                {deleteRequest.status} ({deleteRequest.approvalCount}/
+                                {deleteRequest.status} (
+                                {deleteRequest.approvalCount}/
                                 {deleteRequest.requiredApprovalCount})
                               </span>
                             </div>
                           ) : (
-                            <span className="text-xs text-[var(--text-secondary)]">No request</span>
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              No request
+                            </span>
                           )}
                         </div>
 
@@ -1215,7 +1469,11 @@ export default function ProductsPage() {
                             <button
                               className="btn-secondary w-full"
                               disabled={stock > 0}
-                              title={stock > 0 ? "Can only delete when stock is 0" : ""}
+                              title={
+                                stock > 0
+                                  ? "Can only delete when stock is 0"
+                                  : ""
+                              }
                               onClick={() => void deleteProduct(product.id)}
                               type="button"
                             >
@@ -1226,7 +1484,10 @@ export default function ProductsPage() {
                               <button
                                 className="btn-primary flex-1"
                                 onClick={() =>
-                                  void reviewDeleteProduct(product.id, "approved")
+                                  void reviewDeleteProduct(
+                                    product.id,
+                                    "approved",
+                                  )
                                 }
                                 type="button"
                               >
@@ -1235,7 +1496,10 @@ export default function ProductsPage() {
                               <button
                                 className="btn-secondary flex-1"
                                 onClick={() =>
-                                  void reviewDeleteProduct(product.id, "rejected")
+                                  void reviewDeleteProduct(
+                                    product.id,
+                                    "rejected",
+                                  )
                                 }
                                 type="button"
                               >
@@ -1243,7 +1507,9 @@ export default function ProductsPage() {
                               </button>
                             </>
                           ) : (
-                            <span className="text-xs text-[var(--text-secondary)]">Pending</span>
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              Pending
+                            </span>
                           )}
                         </div>
                       </article>
@@ -1251,128 +1517,123 @@ export default function ProductsPage() {
                   })}
                 </div>
 
-                <div className="hidden overflow-x-auto rounded-2xl border border-[var(--stroke-soft)] md:block">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-[var(--stroke-soft)] bg-[var(--surface-accent-soft)]">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Product Name
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Category
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Description
-                      </th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
-                        Stock
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--stroke-soft)]">
-                    {paginatedProducts.map((product) => {
-                      const stock = productStockById.get(product.id) ?? 0;
-                      const deleteRequest = product.deleteRequest;
-                      const isDeletePending =
-                        deleteRequest?.status === "pending";
-                      const showProductRequestButton = !isDeletePending;
+                <div className="hidden overflow-hidden rounded-2xl border border-(--stroke-soft) md:block">
+                  <Table>
+                    <TableHeader className="bg-(--surface-accent-soft)">
+                      <TableRow className="hover:bg-(--surface-accent-soft)">
+                        <TableHead className="font-semibold">Product Name</TableHead>
+                        <TableHead className="font-semibold">Category</TableHead>
+                        <TableHead className="font-semibold">Description</TableHead>
+                        <TableHead className="text-center font-semibold">Stock</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="text-center font-semibold">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedProducts.map((product) => {
+                        const stock = productStockById.get(product.id) ?? 0;
+                        const deleteRequest = product.deleteRequest;
+                        const isDeletePending =
+                          deleteRequest?.status === "pending";
+                        const showProductRequestButton = !isDeletePending;
 
-                      return (
-                        <tr
-                          key={product.id}
-                          className="hover:bg-[var(--surface-accent-soft)]/50 transition"
-                        >
-                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
-                            {product.name}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">
-                            {product.category}
-                          </td>
-                          <td
-                            className="px-4 py-3 text-[var(--text-secondary)] max-w-xs truncate"
-                            title={product.description?.trim()}
+                        return (
+                          <TableRow
+                            key={product.id}
+                            className="hover:bg-(--surface-accent-soft)/50"
                           >
-                            {product.description?.trim() || "—"}
-                          </td>
-                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">
-                            {stock}
-                          </td>
-                          <td className="px-4 py-3">
-                            {deleteRequest?.status &&
-                            deleteRequest.status !== "none" ? (
-                              <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
-                                <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                  {deleteRequest.status} (
-                                  {deleteRequest.approvalCount}/
-                                  {deleteRequest.requiredApprovalCount})
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">
-                                —
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {showProductRequestButton ? (
-                              <button
-                                className="btn-secondary text-xs py-1 px-2"
-                                disabled={stock > 0}
-                                title={
-                                  stock > 0
-                                    ? "Can only delete when stock is 0"
-                                    : ""
-                                }
-                                onClick={() => void deleteProduct(product.id)}
-                                type="button"
+                            <TableCell className="font-medium text-foreground">
+                              {product.name}
+                            </TableCell>
+                            <TableCell className="text-(--text-secondary)">
+                              {product.category}
+                            </TableCell>
+                            <TableCell
+                              className="max-w-xs truncate text-(--text-secondary)"
+                              title={product.description?.trim()}
+                            >
+                              {product.description?.trim() || "—"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge
+                                variant="outline"
+                                className="min-w-12 justify-center border-slate-200 bg-slate-50 text-slate-700"
                               >
-                                Delete
-                              </button>
-                            ) : deleteRequest?.canReview ? (
-                              <div className="flex gap-1 justify-center flex-wrap">
-                                <button
-                                  className="btn-primary text-xs py-1 px-2"
-                                  onClick={() =>
-                                    void reviewDeleteProduct(
-                                      product.id,
-                                      "approved",
-                                    )
+                                {stock}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {deleteRequest?.status &&
+                              deleteRequest.status !== "none" ? (
+                                <Badge
+                                  variant="outline"
+                                  className={getRequestBadgeClassName(deleteRequest.status)}
+                                >
+                                  {deleteRequest.status} ({deleteRequest.approvalCount}/
+                                  {deleteRequest.requiredApprovalCount})
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-(--text-secondary)">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {showProductRequestButton ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={stock > 0}
+                                  title={
+                                    stock > 0
+                                      ? "Can only delete when stock is 0"
+                                      : ""
                                   }
+                                  onClick={() => void deleteProduct(product.id)}
                                   type="button"
                                 >
-                                  Approve
-                                </button>
-                                <button
-                                  className="btn-secondary text-xs py-1 px-2"
-                                  onClick={() =>
-                                    void reviewDeleteProduct(
-                                      product.id,
-                                      "rejected",
-                                    )
-                                  }
-                                  type="button"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">
-                                Pending
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                  Delete
+                                </Button>
+                              ) : deleteRequest?.canReview ? (
+                                <div className="flex gap-1 justify-center flex-wrap">
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      void reviewDeleteProduct(
+                                        product.id,
+                                        "approved",
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      void reviewDeleteProduct(
+                                        product.id,
+                                        "rejected",
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-(--text-secondary)">
+                                  Pending
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </>
             )}
 
@@ -1424,56 +1685,141 @@ export default function ProductsPage() {
                     setVariantPage(1);
                   }}
                 />
-                <select
-                  className="field"
-                  value={variantFilterProductId}
-                  onChange={(event) => {
-                    setVariantFilterProductId(event.target.value);
-                    setVariantPage(1);
-                  }}
+                <Popover
+                  open={openField === "variant-filter-product"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "variant-filter-product" : null)
+                  }
                 >
-                  <option value="all">All products</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="field"
-                  value={variantFilterStock}
-                  onChange={(event) => {
-                    setVariantFilterStock(
-                      event.target.value as "all" | "in-stock" | "zero-stock",
-                    );
-                    setVariantPage(1);
-                  }}
+                  <PopoverTrigger asChild>
+                    <button className="field flex items-center justify-between" type="button">
+                      <span>
+                        {variantFilterProductId === "all"
+                          ? "All products"
+                          : products.find((product) => product.id === variantFilterProductId)
+                              ?.name ?? "All products"}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search product..." />
+                      <CommandList>
+                        <CommandEmpty>No product found.</CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="All products"
+                            data-checked={variantFilterProductId === "all" ? "true" : undefined}
+                            onSelect={() => {
+                              setVariantFilterProductId("all");
+                              setVariantPage(1);
+                              setOpenField(null);
+                            }}
+                          >
+                            All products
+                          </CommandItem>
+                          {products.map((product) => (
+                            <CommandItem
+                              key={product.id}
+                              value={`${product.name} ${product.category}`}
+                              data-checked={variantFilterProductId === product.id ? "true" : undefined}
+                              onSelect={() => {
+                                setVariantFilterProductId(product.id);
+                                setVariantPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {product.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Popover
+                  open={openField === "variant-filter-stock"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "variant-filter-stock" : null)
+                  }
                 >
-                  <option value="all">All stock states</option>
-                  <option value="in-stock">In stock only</option>
-                  <option value="zero-stock">Zero stock only</option>
-                </select>
-                <select
-                  className="field sm:col-span-2"
-                  value={variantFilterDeleteStatus}
-                  onChange={(event) => {
-                    setVariantFilterDeleteStatus(
-                      event.target.value as
-                        | "all"
-                        | "none"
-                        | "pending"
-                        | "approved"
-                        | "rejected",
-                    );
-                    setVariantPage(1);
-                  }}
+                  <PopoverTrigger asChild>
+                    <button className="field flex items-center justify-between" type="button">
+                      <span>
+                        {stockFilterOptions.find(
+                          (option) => option.value === variantFilterStock,
+                        )?.label ?? "All stock states"}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search stock state..." />
+                      <CommandList>
+                        <CommandEmpty>No stock option found.</CommandEmpty>
+                        <CommandGroup>
+                          {stockFilterOptions.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={option.label}
+                              data-checked={variantFilterStock === option.value ? "true" : undefined}
+                              onSelect={() => {
+                                setVariantFilterStock(option.value);
+                                setVariantPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {option.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Popover
+                  open={openField === "variant-filter-delete"}
+                  onOpenChange={(open) =>
+                    setOpenField(open ? "variant-filter-delete" : null)
+                  }
                 >
-                  <option value="all">All delete states</option>
-                  <option value="none">No request</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
+                  <PopoverTrigger asChild>
+                    <button className="field sm:col-span-2 flex items-center justify-between" type="button">
+                      <span>
+                        {deleteStatusOptions.find(
+                          (option) => option.value === variantFilterDeleteStatus,
+                        )?.label ?? "All delete states"}
+                      </span>
+                      <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search delete status..." />
+                      <CommandList>
+                        <CommandEmpty>No status found.</CommandEmpty>
+                        <CommandGroup>
+                          {deleteStatusOptions.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={option.label}
+                              data-checked={variantFilterDeleteStatus === option.value ? "true" : undefined}
+                              onSelect={() => {
+                                setVariantFilterDeleteStatus(option.value);
+                                setVariantPage(1);
+                                setOpenField(null);
+                              }}
+                            >
+                              {option.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             ) : null}
 
@@ -1486,7 +1832,8 @@ export default function ProductsPage() {
                 <div className="grid gap-3 md:hidden">
                   {paginatedVariants.map((variant) => {
                     const productName =
-                      productNameById.get(variant.productId) ?? "Unknown product";
+                      productNameById.get(variant.productId) ??
+                      "Unknown product";
                     const deleteRequest = variant.deleteRequest;
                     const updateRequest = variant.updateRequest;
                     const isDeletePending = deleteRequest?.status === "pending";
@@ -1517,32 +1864,49 @@ export default function ProductsPage() {
 
                         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                           <p className="text-[var(--text-secondary)]">
-                            Color: <span className="font-medium text-[var(--text-primary)]">{variant.color}</span>
+                            Color:{" "}
+                            <span className="font-medium text-[var(--text-primary)]">
+                              {variant.color}
+                            </span>
                           </p>
                           <p className="text-[var(--text-secondary)]">
-                            Size: <span className="font-medium text-[var(--text-primary)]">{variant.size}</span>
+                            Size:{" "}
+                            <span className="font-medium text-[var(--text-primary)]">
+                              {variant.size}
+                            </span>
                           </p>
                           <p className="col-span-2 text-[var(--text-secondary)]">
-                            Price: <span className="font-semibold text-[var(--text-primary)]">{currency(variant.sellingPrice)}</span>
+                            Price:{" "}
+                            <span className="font-semibold text-[var(--text-primary)]">
+                              {currency(variant.sellingPrice)}
+                            </span>
                           </p>
                         </div>
 
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {updateRequest?.status && updateRequest.status !== "none" ? (
+                          {updateRequest?.status &&
+                          updateRequest.status !== "none" ? (
                             <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
-                              update {updateRequest.status} ({updateRequest.approvalCount}/
+                              update {updateRequest.status} (
+                              {updateRequest.approvalCount}/
                               {updateRequest.requiredApprovalCount})
                             </span>
                           ) : null}
-                          {deleteRequest?.status && deleteRequest.status !== "none" ? (
+                          {deleteRequest?.status &&
+                          deleteRequest.status !== "none" ? (
                             <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
-                              delete {deleteRequest.status} ({deleteRequest.approvalCount}/
+                              delete {deleteRequest.status} (
+                              {deleteRequest.approvalCount}/
                               {deleteRequest.requiredApprovalCount})
                             </span>
                           ) : null}
-                          {(!updateRequest?.status || updateRequest.status === "none") &&
-                          (!deleteRequest?.status || deleteRequest.status === "none") ? (
-                            <span className="text-xs text-[var(--text-secondary)]">No request</span>
+                          {(!updateRequest?.status ||
+                            updateRequest.status === "none") &&
+                          (!deleteRequest?.status ||
+                            deleteRequest.status === "none") ? (
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              No request
+                            </span>
                           ) : null}
                         </div>
 
@@ -1553,7 +1917,10 @@ export default function ProductsPage() {
                                 <button
                                   className="btn-primary flex-1"
                                   onClick={() =>
-                                    void reviewUpdateVariant(variant.id, "approved")
+                                    void reviewUpdateVariant(
+                                      variant.id,
+                                      "approved",
+                                    )
                                   }
                                   type="button"
                                 >
@@ -1562,7 +1929,10 @@ export default function ProductsPage() {
                                 <button
                                   className="btn-secondary flex-1"
                                   onClick={() =>
-                                    void reviewUpdateVariant(variant.id, "rejected")
+                                    void reviewUpdateVariant(
+                                      variant.id,
+                                      "rejected",
+                                    )
                                   }
                                   type="button"
                                 >
@@ -1570,7 +1940,9 @@ export default function ProductsPage() {
                                 </button>
                               </>
                             ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">Update pending</span>
+                              <span className="text-xs text-[var(--text-secondary)]">
+                                Update pending
+                              </span>
                             )
                           ) : (
                             <button
@@ -1601,7 +1973,10 @@ export default function ProductsPage() {
                               <button
                                 className="btn-primary flex-1"
                                 onClick={() =>
-                                  void reviewDeleteVariant(variant.id, "approved")
+                                  void reviewDeleteVariant(
+                                    variant.id,
+                                    "approved",
+                                  )
                                 }
                                 type="button"
                               >
@@ -1610,7 +1985,10 @@ export default function ProductsPage() {
                               <button
                                 className="btn-secondary flex-1"
                                 onClick={() =>
-                                  void reviewDeleteVariant(variant.id, "rejected")
+                                  void reviewDeleteVariant(
+                                    variant.id,
+                                    "rejected",
+                                  )
                                 }
                                 type="button"
                               >
@@ -1618,7 +1996,9 @@ export default function ProductsPage() {
                               </button>
                             </>
                           ) : isDeletePending ? (
-                            <span className="text-xs text-[var(--text-secondary)]">Delete pending</span>
+                            <span className="text-xs text-[var(--text-secondary)]">
+                              Delete pending
+                            </span>
                           ) : null}
                         </div>
                       </article>
@@ -1626,205 +2006,202 @@ export default function ProductsPage() {
                   })}
                 </div>
 
-                <div className="hidden overflow-x-auto rounded-2xl border border-[var(--stroke-soft)] md:block">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-[var(--stroke-soft)] bg-[var(--surface-accent-soft)]">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        SKU
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Product
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Color
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Size
-                      </th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
-                        Stock
-                      </th>
-                      <th className="px-4 py-3 text-right font-semibold text-[var(--text-primary)]">
-                        Selling Price
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-[var(--text-primary)]">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-center font-semibold text-[var(--text-primary)]">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--stroke-soft)]">
-                    {paginatedVariants.map((variant) => {
-                      const productName =
-                        productNameById.get(variant.productId) ??
-                        "Unknown product";
-                      const deleteRequest = variant.deleteRequest;
-                      const updateRequest = variant.updateRequest;
-                      const isDeletePending =
-                        deleteRequest?.status === "pending";
-                      const isUpdatePending =
-                        updateRequest?.status === "pending" ||
-                        (updateRequest?.status === "none" &&
-                          Boolean(updateRequest.requestedById));
-                      const showVariantRequestButton = !isDeletePending;
+                <div className="hidden overflow-hidden rounded-2xl border border-(--stroke-soft) md:block">
+                  <Table>
+                    <TableHeader className="bg-(--surface-accent-soft)">
+                      <TableRow className="hover:bg-(--surface-accent-soft)">
+                        <TableHead className="font-semibold">SKU</TableHead>
+                        <TableHead className="font-semibold">Product</TableHead>
+                        <TableHead className="font-semibold">Color</TableHead>
+                        <TableHead className="font-semibold">Size</TableHead>
+                        <TableHead className="text-center font-semibold">Stock</TableHead>
+                        <TableHead className="text-right font-semibold">Selling Price</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="text-center font-semibold">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedVariants.map((variant) => {
+                        const productName =
+                          productNameById.get(variant.productId) ??
+                          "Unknown product";
+                        const deleteRequest = variant.deleteRequest;
+                        const updateRequest = variant.updateRequest;
+                        const isDeletePending =
+                          deleteRequest?.status === "pending";
+                        const isUpdatePending =
+                          updateRequest?.status === "pending" ||
+                          (updateRequest?.status === "none" &&
+                            Boolean(updateRequest.requestedById));
+                        const showVariantRequestButton = !isDeletePending;
 
-                      return (
-                        <tr
-                          key={variant.id}
-                          className="hover:bg-[var(--surface-accent-soft)]/50 transition"
-                        >
-                          <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
-                            {variant.sku}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">
-                            {productName}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">
-                            {variant.color}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)]">
-                            {variant.size}
-                          </td>
-                          <td className="px-4 py-3 text-center font-medium text-[var(--text-primary)]">
-                            {variant.stockQty}
-                          </td>
-                          <td className="px-4 py-3 text-right text-[var(--text-primary)] font-medium">
-                            {currency(variant.sellingPrice)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
-                              {updateRequest?.status &&
-                              updateRequest.status !== "none" ? (
-                                <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
-                                  <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                    update {updateRequest.status} (
-                                    {updateRequest.approvalCount}/
+                        return (
+                          <TableRow
+                            key={variant.id}
+                            className="hover:bg-(--surface-accent-soft)/50"
+                          >
+                            <TableCell className="font-medium text-foreground">
+                              {variant.sku}
+                            </TableCell>
+                            <TableCell className="text-(--text-secondary)">
+                              {productName}
+                            </TableCell>
+                            <TableCell className="text-(--text-secondary)">
+                              {variant.color}
+                            </TableCell>
+                            <TableCell className="text-(--text-secondary)">
+                              {variant.size}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge
+                                variant="outline"
+                                className="min-w-12 justify-center border-slate-200 bg-slate-50 text-slate-700"
+                              >
+                                {variant.stockQty}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-foreground">
+                              {currency(variant.sellingPrice)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                {updateRequest?.status &&
+                                updateRequest.status !== "none" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={getRequestBadgeClassName(updateRequest.status)}
+                                  >
+                                    update {updateRequest.status} ({updateRequest.approvalCount}/
                                     {updateRequest.requiredApprovalCount})
-                                  </span>
-                                </div>
-                              ) : null}
-                              {deleteRequest?.status &&
-                              deleteRequest.status !== "none" ? (
-                                <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
-                                  <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
-                                    delete {deleteRequest.status} (
-                                    {deleteRequest.approvalCount}/
+                                  </Badge>
+                                ) : null}
+                                {deleteRequest?.status &&
+                                deleteRequest.status !== "none" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={getRequestBadgeClassName(deleteRequest.status)}
+                                  >
+                                    delete {deleteRequest.status} ({deleteRequest.approvalCount}/
                                     {deleteRequest.requiredApprovalCount})
+                                  </Badge>
+                                ) : null}
+                                {(!updateRequest?.status ||
+                                  updateRequest.status === "none") &&
+                                (!deleteRequest?.status ||
+                                  deleteRequest.status === "none") ? (
+                                  <span className="text-xs text-(--text-secondary)">
+                                    —
                                   </span>
-                                </div>
-                              ) : null}
-                              {(!updateRequest?.status ||
-                                updateRequest.status === "none") &&
-                              (!deleteRequest?.status ||
-                                deleteRequest.status === "none") ? (
-                                <span className="text-xs text-[var(--text-secondary)]">
-                                  —
-                                </span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex flex-col items-center gap-2">
-                              {isUpdatePending ? (
-                                updateRequest?.canReview ? (
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex flex-col items-center gap-2">
+                                {isUpdatePending ? (
+                                  updateRequest?.canReview ? (
+                                    <div className="flex gap-1 justify-center flex-wrap">
+                                      <Button
+                                        size="sm"
+                                        onClick={() =>
+                                          void reviewUpdateVariant(
+                                            variant.id,
+                                            "approved",
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Approve update
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          void reviewUpdateVariant(
+                                            variant.id,
+                                            "rejected",
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Reject update
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-(--text-secondary)">
+                                      Update pending
+                                    </span>
+                                  )
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      openVariantUpdateModal(variant)
+                                    }
+                                    type="button"
+                                  >
+                                    Request update
+                                  </Button>
+                                )}
+
+                                {showVariantRequestButton ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={variant.stockQty > 0}
+                                    title={
+                                      variant.stockQty > 0
+                                        ? "Can only delete when stock is 0"
+                                        : ""
+                                    }
+                                    onClick={() =>
+                                      void deleteVariant(variant.id)
+                                    }
+                                    type="button"
+                                  >
+                                    Delete
+                                  </Button>
+                                ) : deleteRequest?.canReview ? (
                                   <div className="flex gap-1 justify-center flex-wrap">
-                                    <button
-                                      className="btn-primary text-xs py-1 px-2"
+                                    <Button
+                                      size="sm"
                                       onClick={() =>
-                                        void reviewUpdateVariant(
+                                        void reviewDeleteVariant(
                                           variant.id,
                                           "approved",
                                         )
                                       }
                                       type="button"
                                     >
-                                      Approve update
-                                    </button>
-                                    <button
-                                      className="btn-secondary text-xs py-1 px-2"
+                                      Approve delete
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
                                       onClick={() =>
-                                        void reviewUpdateVariant(
+                                        void reviewDeleteVariant(
                                           variant.id,
                                           "rejected",
                                         )
                                       }
                                       type="button"
                                     >
-                                      Reject update
-                                    </button>
+                                      Reject delete
+                                    </Button>
                                   </div>
-                                ) : (
-                                  <span className="text-xs text-[var(--text-secondary)]">
-                                    Update pending
+                                ) : isDeletePending ? (
+                                  <span className="text-xs text-(--text-secondary)">
+                                    Delete pending
                                   </span>
-                                )
-                              ) : (
-                                <button
-                                  className="btn-secondary text-xs py-1 px-2"
-                                  onClick={() => openVariantUpdateModal(variant)}
-                                  type="button"
-                                >
-                                  Request update
-                                </button>
-                              )}
-
-                              {showVariantRequestButton ? (
-                                <button
-                                  className="btn-secondary text-xs py-1 px-2"
-                                  disabled={variant.stockQty > 0}
-                                  title={
-                                    variant.stockQty > 0
-                                      ? "Can only delete when stock is 0"
-                                      : ""
-                                  }
-                                  onClick={() => void deleteVariant(variant.id)}
-                                  type="button"
-                                >
-                                  Delete
-                                </button>
-                              ) : deleteRequest?.canReview ? (
-                                <div className="flex gap-1 justify-center flex-wrap">
-                                  <button
-                                    className="btn-primary text-xs py-1 px-2"
-                                    onClick={() =>
-                                      void reviewDeleteVariant(
-                                        variant.id,
-                                        "approved",
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    Approve delete
-                                  </button>
-                                  <button
-                                    className="btn-secondary text-xs py-1 px-2"
-                                    onClick={() =>
-                                      void reviewDeleteVariant(
-                                        variant.id,
-                                        "rejected",
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    Reject delete
-                                  </button>
-                                </div>
-                              ) : isDeletePending ? (
-                                <span className="text-xs text-[var(--text-secondary)]">
-                                  Delete pending
-                                </span>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </>
             )}
 
@@ -1866,54 +2243,61 @@ export default function ProductsPage() {
         )}
       </section>
 
-      {isUpdateModalOpen && updatingVariant ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-[1.4rem] bg-white p-6 shadow-2xl ring-1 ring-[var(--stroke-soft)]">
-            <h4 className="text-lg font-semibold text-[var(--text-primary)]">
-              Request variant update
-            </h4>
-            <p className="mt-1 text-sm text-[var(--text-secondary)]">
-              {updatingVariant.sku} - {updatingVariant.color} / {updatingVariant.size}
-            </p>
+      <Dialog
+        open={isUpdateModalOpen && Boolean(updatingVariant)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeVariantUpdateModal();
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request variant update</DialogTitle>
+            <DialogDescription>
+              {updatingVariant
+                ? `${updatingVariant.sku} - ${updatingVariant.color} / ${updatingVariant.size}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="mt-4 space-y-2">
-              <label className="block text-sm text-[var(--text-secondary)]">
-                New selling price
-              </label>
-              <input
-                className="field"
-                type="number"
-                min={0}
-                value={updateSellingPriceInput}
-                onChange={(event) => {
-                  setUpdateSellingPriceInput(event.target.value);
-                  setUpdateSellingPriceError(null);
-                }}
-              />
-              {updateSellingPriceError ? (
-                <p className="text-sm text-red-600">{updateSellingPriceError}</p>
-              ) : null}
-            </div>
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                className="btn-secondary"
-                onClick={closeVariantUpdateModal}
-                type="button"
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => void requestVariantUpdate()}
-                type="button"
-              >
-                Submit update request
-              </button>
-            </div>
+          <div className="space-y-2">
+            <label className="block text-sm text-[var(--text-secondary)]">
+              New selling price
+            </label>
+            <input
+              className="field"
+              type="number"
+              min={0}
+              value={updateSellingPriceInput}
+              onChange={(event) => {
+                setUpdateSellingPriceInput(event.target.value);
+                setUpdateSellingPriceError(null);
+              }}
+            />
+            {updateSellingPriceError ? (
+              <p className="text-sm text-red-600">{updateSellingPriceError}</p>
+            ) : null}
           </div>
-        </div>
-      ) : null}
+
+          <DialogFooter className="mt-2 border-none bg-transparent p-0">
+            <button
+              className="btn-secondary"
+              onClick={closeVariantUpdateModal}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => void requestVariantUpdate()}
+              type="button"
+            >
+              Submit update request
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

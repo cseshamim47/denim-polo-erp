@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
-import { createPurchase, listPurchases } from "@/lib/services/purchases";
+import {
+  createPurchase,
+  listPurchases,
+  reviewPurchase,
+} from "@/lib/services/purchases";
 
 const purchaseSchema = z.object({
   variantId: z.string().trim().min(1),
@@ -12,6 +16,12 @@ const purchaseSchema = z.object({
   purchaseDate: z.coerce.date(),
   billImageUrl: z.string().trim().optional(),
   note: z.string().trim().optional(),
+});
+
+const reviewPurchaseSchema = z.object({
+  purchaseId: z.string().trim().min(1),
+  decision: z.enum(["approved", "rejected"]),
+  comment: z.string().trim().optional(),
 });
 
 export async function GET(request: Request) {
@@ -28,6 +38,7 @@ export async function GET(request: Request) {
 
   try {
     const purchases = await listPurchases({
+      actorId: session.user.id,
       search,
       from: from ? new Date(`${from}T00:00:00.000Z`) : undefined,
       to: to ? new Date(`${to}T23:59:59.999Z`) : undefined,
@@ -38,6 +49,40 @@ export async function GET(request: Request) {
     return NextResponse.json(
       { error: "Unable to load purchases" },
       { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getRequiredSession(["partner"]);
+
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const parsed = reviewPurchaseSchema.safeParse(await request.json());
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const purchase = await reviewPurchase({
+      ...parsed.data,
+      partnerId: session.user.id,
+    });
+
+    return NextResponse.json({ status: purchase.status });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to review purchase",
+      },
+      { status: 400 },
     );
   }
 }

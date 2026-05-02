@@ -14,7 +14,7 @@ export async function getCurrentBalanceSnapshot() {
       InvestmentModel.find({ status: "approved" }).lean(),
       SaleModel.find({ status: "completed" }).lean(),
       ExpenseModel.find({ status: "approved" }).lean(),
-      PurchaseModel.find().lean(),
+      PurchaseModel.find({ status: "approved" }).lean(),
     ]);
 
   const approvedInvestmentTotal = approvedInvestments.reduce(
