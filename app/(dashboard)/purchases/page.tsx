@@ -26,6 +26,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 
 type Product = {
   id: string;
@@ -196,6 +197,7 @@ export default function NewPurchasePage() {
   const [purchaseHistory, setPurchaseHistory] = useState<
     PurchaseHistoryRecord[]
   >([]);
+  const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   function createNextItem() {
@@ -246,6 +248,8 @@ export default function NewPurchasePage() {
         setPurchaseHistory(purchasesPayload?.purchases ?? []);
       } catch {
         setError("Unable to load purchase catalog right now.");
+      } finally {
+        setIsCatalogLoading(false);
       }
     }
 
@@ -551,196 +555,58 @@ export default function NewPurchasePage() {
         </div>
 
         <div className="mt-5 space-y-3">
-          {items.map((item, index) => {
-            const matchedVariant = getMatchingVariant(item);
-            const rowVariants = getProductVariants(item.productId);
-            const sizeOptions = Array.from(
-              new Set(rowVariants.map((variant) => variant.size)),
-            );
-            const colorOptions = Array.from(
-              new Set(rowVariants.map((variant) => variant.color)),
-            );
-            const rowTotal = item.qty * item.costPerUnit;
+          {isCatalogLoading ? (
+            <Card className="gap-0 rounded-[1.3rem] border-(--stroke-soft) bg-(--surface-accent-soft) py-0 shadow-none">
+              <CardContent className="px-4 py-8">
+                <Spinner label="Loading purchase catalog..." />
+              </CardContent>
+            </Card>
+          ) : (
+            items.map((item, index) => {
+              const matchedVariant = getMatchingVariant(item);
+              const rowVariants = getProductVariants(item.productId);
+              const sizeOptions = Array.from(
+                new Set(rowVariants.map((variant) => variant.size)),
+              );
+              const colorOptions = Array.from(
+                new Set(rowVariants.map((variant) => variant.color)),
+              );
+              const rowTotal = item.qty * item.costPerUnit;
 
-            return (
-              <div
-                key={item.id}
-                className="rounded-[1.3rem] bg-(--surface-accent-soft) p-4 ring-1 ring-(--stroke-soft)"
-              >
-                {/* Item header */}
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-foreground">
-                    Item {index + 1}
-                  </p>
-                  <button
-                    className="rounded-full px-3 py-1 text-xs font-medium text-(--danger) ring-1 ring-(--danger)/30 transition-colors hover:bg-(--danger)/8"
-                    onClick={() =>
-                      setItems((current) =>
-                        current.length === 1
-                          ? [createItem("item-1")]
-                          : current.filter(
-                              (currentItem) => currentItem.id !== item.id,
-                            ),
-                      )
-                    }
-                    type="button"
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                {/* SKU */}
-                <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
-                  SKU
-                  <Popover
-                    open={openField === `sku-${item.id}`}
-                    onOpenChange={(open) =>
-                      setOpenField(open ? `sku-${item.id}` : null)
-                    }
-                  >
-                    <PopoverTrigger asChild>
-                      <button
-                        className="field flex items-center justify-between text-left"
-                        type="button"
-                      >
-                        {item.sku ? (
-                          <span>{item.sku}</span>
-                        ) : (
-                          <span className="text-(--text-secondary)">
-                            Type or pick an SKU
-                          </span>
-                        )}
-                        <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-[--radix-popover-trigger-width] p-0"
-                      align="start"
-                    >
-                      <Command>
-                        <CommandInput placeholder="Search SKU…" />
-                        <CommandList>
-                          <CommandEmpty>No SKU found.</CommandEmpty>
-                          <CommandGroup>
-                            {variants.map((variant) => (
-                              <CommandItem
-                                key={variant.id}
-                                value={`${variant.sku} ${getProductName(variant.productId)} ${variant.color} ${variant.size}`}
-                                data-checked={
-                                  item.sku === variant.sku ? "true" : undefined
-                                }
-                                onSelect={() => {
-                                  updateItemSku(item.id, variant.sku);
-                                  setOpenField(null);
-                                }}
-                              >
-                                <span className="font-medium">
-                                  {variant.sku}
-                                </span>
-                                <span className="ml-2 text-(--text-secondary)">
-                                  {getProductName(variant.productId)} ·{" "}
-                                  {variant.color} · {variant.size}
-                                </span>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="mt-3">
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Supplier
-                    <input
-                      className="field"
-                      placeholder="Supplier name"
-                      value={item.supplier}
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          supplier: event.target.value,
-                        })
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-[1.3rem] bg-(--surface-accent-soft) p-4 ring-1 ring-(--stroke-soft)"
+                >
+                  {/* Item header */}
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-foreground">
+                      Item {index + 1}
+                    </p>
+                    <button
+                      className="rounded-full px-3 py-1 text-xs font-medium text-(--danger) ring-1 ring-(--danger)/30 transition-colors hover:bg-(--danger)/8"
+                      onClick={() =>
+                        setItems((current) =>
+                          current.length === 1
+                            ? [createItem("item-1")]
+                            : current.filter(
+                                (currentItem) => currentItem.id !== item.id,
+                              ),
+                        )
                       }
-                    />
-                  </label>
-                </div>
-
-                <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
-                  Product
-                  <Popover
-                    open={openField === `product-${item.id}`}
-                    onOpenChange={(open) =>
-                      setOpenField(open ? `product-${item.id}` : null)
-                    }
-                  >
-                    <PopoverTrigger asChild>
-                      <button
-                        className="field flex items-center justify-between text-left"
-                        type="button"
-                      >
-                        {item.productId ? (
-                          <span>
-                            {products.find((p) => p.id === item.productId)
-                              ?.name ?? ""}{" "}
-                            ·{" "}
-                            {products.find((p) => p.id === item.productId)
-                              ?.category ?? ""}
-                          </span>
-                        ) : (
-                          <span className="text-(--text-secondary)">
-                            Select a product…
-                          </span>
-                        )}
-                        <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-[--radix-popover-trigger-width] p-0"
-                      align="start"
+                      type="button"
                     >
-                      <Command>
-                        <CommandInput placeholder="Search product…" />
-                        <CommandList>
-                          <CommandEmpty>No product found.</CommandEmpty>
-                          <CommandGroup>
-                            {products.map((product) => (
-                              <CommandItem
-                                key={product.id}
-                                value={`${product.name} ${product.category}`}
-                                data-checked={
-                                  item.productId === product.id
-                                    ? "true"
-                                    : undefined
-                                }
-                                onSelect={() => {
-                                  updateItem(item.id, {
-                                    productId: product.id,
-                                    sku: "",
-                                    size: "",
-                                    color: "",
-                                  });
-                                  setOpenField(null);
-                                }}
-                              >
-                                {product.name} · {product.category}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                      Remove
+                    </button>
+                  </div>
 
-                {/* Size + Color */}
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Size
+                  {/* SKU */}
+                  <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
+                    SKU
                     <Popover
-                      open={openField === `size-${item.id}`}
+                      open={openField === `sku-${item.id}`}
                       onOpenChange={(open) =>
-                        setOpenField(open ? `size-${item.id}` : null)
+                        setOpenField(open ? `sku-${item.id}` : null)
                       }
                     >
                       <PopoverTrigger asChild>
@@ -748,11 +614,11 @@ export default function NewPurchasePage() {
                           className="field flex items-center justify-between text-left"
                           type="button"
                         >
-                          {item.size ? (
-                            <span>{item.size}</span>
+                          {item.sku ? (
+                            <span>{item.sku}</span>
                           ) : (
                             <span className="text-(--text-secondary)">
-                              e.g. M, 32
+                              Type or pick an SKU
                             </span>
                           )}
                           <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
@@ -763,33 +629,31 @@ export default function NewPurchasePage() {
                         align="start"
                       >
                         <Command>
-                          <CommandInput placeholder="Search size…" />
+                          <CommandInput placeholder="Search SKU…" />
                           <CommandList>
-                            <CommandEmpty>No size found.</CommandEmpty>
+                            <CommandEmpty>No SKU found.</CommandEmpty>
                             <CommandGroup>
-                              {sizeOptions.map((size) => (
+                              {variants.map((variant) => (
                                 <CommandItem
-                                  key={size}
-                                  value={size}
+                                  key={variant.id}
+                                  value={`${variant.sku} ${getProductName(variant.productId)} ${variant.color} ${variant.size}`}
                                   data-checked={
-                                    item.size === size ? "true" : undefined
+                                    item.sku === variant.sku
+                                      ? "true"
+                                      : undefined
                                   }
                                   onSelect={() => {
-                                    const nextVariant = variants.find(
-                                      (v) =>
-                                        v.productId === item.productId &&
-                                        v.size === size &&
-                                        v.color ===
-                                          item.color.trim().toUpperCase(),
-                                    );
-                                    updateItem(item.id, {
-                                      size,
-                                      sku: nextVariant?.sku ?? item.sku,
-                                    });
+                                    updateItemSku(item.id, variant.sku);
                                     setOpenField(null);
                                   }}
                                 >
-                                  {size}
+                                  <span className="font-medium">
+                                    {variant.sku}
+                                  </span>
+                                  <span className="ml-2 text-(--text-secondary)">
+                                    {getProductName(variant.productId)} ·{" "}
+                                    {variant.color} · {variant.size}
+                                  </span>
                                 </CommandItem>
                               ))}
                             </CommandGroup>
@@ -799,12 +663,28 @@ export default function NewPurchasePage() {
                     </Popover>
                   </div>
 
-                  <div className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Color
+                  <div className="mt-3">
+                    <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                      Supplier
+                      <input
+                        className="field"
+                        placeholder="Supplier name"
+                        value={item.supplier}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            supplier: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid gap-1.5 text-sm font-medium text-foreground">
+                    Product
                     <Popover
-                      open={openField === `color-${item.id}`}
+                      open={openField === `product-${item.id}`}
                       onOpenChange={(open) =>
-                        setOpenField(open ? `color-${item.id}` : null)
+                        setOpenField(open ? `product-${item.id}` : null)
                       }
                     >
                       <PopoverTrigger asChild>
@@ -812,11 +692,17 @@ export default function NewPurchasePage() {
                           className="field flex items-center justify-between text-left"
                           type="button"
                         >
-                          {item.color ? (
-                            <span>{item.color}</span>
+                          {item.productId ? (
+                            <span>
+                              {products.find((p) => p.id === item.productId)
+                                ?.name ?? ""}{" "}
+                              ·{" "}
+                              {products.find((p) => p.id === item.productId)
+                                ?.category ?? ""}
+                            </span>
                           ) : (
                             <span className="text-(--text-secondary)">
-                              e.g. BLK, RED
+                              Select a product…
                             </span>
                           )}
                           <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
@@ -827,33 +713,30 @@ export default function NewPurchasePage() {
                         align="start"
                       >
                         <Command>
-                          <CommandInput placeholder="Search color…" />
+                          <CommandInput placeholder="Search product…" />
                           <CommandList>
-                            <CommandEmpty>No color found.</CommandEmpty>
+                            <CommandEmpty>No product found.</CommandEmpty>
                             <CommandGroup>
-                              {colorOptions.map((color) => (
+                              {products.map((product) => (
                                 <CommandItem
-                                  key={color}
-                                  value={color}
+                                  key={product.id}
+                                  value={`${product.name} ${product.category}`}
                                   data-checked={
-                                    item.color === color ? "true" : undefined
+                                    item.productId === product.id
+                                      ? "true"
+                                      : undefined
                                   }
                                   onSelect={() => {
-                                    const nextVariant = variants.find(
-                                      (v) =>
-                                        v.productId === item.productId &&
-                                        v.size ===
-                                          item.size.trim().toUpperCase() &&
-                                        v.color === color,
-                                    );
                                     updateItem(item.id, {
-                                      color,
-                                      sku: nextVariant?.sku ?? item.sku,
+                                      productId: product.id,
+                                      sku: "",
+                                      size: "",
+                                      color: "",
                                     });
                                     setOpenField(null);
                                   }}
                                 >
-                                  {color}
+                                  {product.name} · {product.category}
                                 </CommandItem>
                               ))}
                             </CommandGroup>
@@ -862,99 +745,233 @@ export default function NewPurchasePage() {
                       </PopoverContent>
                     </Popover>
                   </div>
-                </div>
 
-                {/* Qty + Cost + Row total */}
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Qty
-                    <input
-                      className="field"
-                      min={1}
-                      onWheel={preventNumberScroll}
-                      type="number"
-                      value={item.qty}
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          qty: Math.max(Number(event.target.value) || 0, 0),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                    Cost / unit
-                    <input
-                      className="field"
-                      min={0}
-                      onWheel={preventNumberScroll}
-                      placeholder="0"
-                      step="1"
-                      type="number"
-                      value={item.costPerUnit === 0 ? "" : item.costPerUnit}
-                      onChange={(event) =>
-                        updateItem(item.id, {
-                          costPerUnit: Math.max(
-                            Number(event.target.value) || 0,
-                            0,
-                          ),
-                        })
-                      }
-                    />
-                  </label>
-                  <div className="grid gap-1.5">
-                    <p className="text-sm font-medium text-foreground">Total</p>
-                    <div className="flex min-h-12 items-center rounded-2xl bg-white px-4 text-sm font-semibold text-foreground ring-1 ring-(--stroke-soft)">
-                      {currency(rowTotal)}
+                  {/* Size + Color */}
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5 text-sm font-medium text-foreground">
+                      Size
+                      <Popover
+                        open={openField === `size-${item.id}`}
+                        onOpenChange={(open) =>
+                          setOpenField(open ? `size-${item.id}` : null)
+                        }
+                      >
+                        <PopoverTrigger asChild>
+                          <button
+                            className="field flex items-center justify-between text-left"
+                            type="button"
+                          >
+                            {item.size ? (
+                              <span>{item.size}</span>
+                            ) : (
+                              <span className="text-(--text-secondary)">
+                                e.g. M, 32
+                              </span>
+                            )}
+                            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[--radix-popover-trigger-width] p-0"
+                          align="start"
+                        >
+                          <Command>
+                            <CommandInput placeholder="Search size…" />
+                            <CommandList>
+                              <CommandEmpty>No size found.</CommandEmpty>
+                              <CommandGroup>
+                                {sizeOptions.map((size) => (
+                                  <CommandItem
+                                    key={size}
+                                    value={size}
+                                    data-checked={
+                                      item.size === size ? "true" : undefined
+                                    }
+                                    onSelect={() => {
+                                      const nextVariant = variants.find(
+                                        (v) =>
+                                          v.productId === item.productId &&
+                                          v.size === size &&
+                                          v.color ===
+                                            item.color.trim().toUpperCase(),
+                                      );
+                                      updateItem(item.id, {
+                                        size,
+                                        sku: nextVariant?.sku ?? item.sku,
+                                      });
+                                      setOpenField(null);
+                                    }}
+                                  >
+                                    {size}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="grid gap-1.5 text-sm font-medium text-foreground">
+                      Color
+                      <Popover
+                        open={openField === `color-${item.id}`}
+                        onOpenChange={(open) =>
+                          setOpenField(open ? `color-${item.id}` : null)
+                        }
+                      >
+                        <PopoverTrigger asChild>
+                          <button
+                            className="field flex items-center justify-between text-left"
+                            type="button"
+                          >
+                            {item.color ? (
+                              <span>{item.color}</span>
+                            ) : (
+                              <span className="text-(--text-secondary)">
+                                e.g. BLK, RED
+                              </span>
+                            )}
+                            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-40" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[--radix-popover-trigger-width] p-0"
+                          align="start"
+                        >
+                          <Command>
+                            <CommandInput placeholder="Search color…" />
+                            <CommandList>
+                              <CommandEmpty>No color found.</CommandEmpty>
+                              <CommandGroup>
+                                {colorOptions.map((color) => (
+                                  <CommandItem
+                                    key={color}
+                                    value={color}
+                                    data-checked={
+                                      item.color === color ? "true" : undefined
+                                    }
+                                    onSelect={() => {
+                                      const nextVariant = variants.find(
+                                        (v) =>
+                                          v.productId === item.productId &&
+                                          v.size ===
+                                            item.size.trim().toUpperCase() &&
+                                          v.color === color,
+                                      );
+                                      updateItem(item.id, {
+                                        color,
+                                        sku: nextVariant?.sku ?? item.sku,
+                                      });
+                                      setOpenField(null);
+                                    }}
+                                  >
+                                    {color}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
-                </div>
 
-                {/* Variant match status */}
-                <div className="mt-3">
-                  {item.productId &&
-                    (matchedVariant ? (
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--success)/25">
-                          <span className="text-xs font-semibold text-(--success)">
-                            ✓ Variant matched
-                          </span>
-                          <span className="text-xs text-(--text-secondary)">
-                            SKU: {matchedVariant.sku}
-                          </span>
-                          <span className="text-xs text-(--text-secondary)">
-                            In stock: {matchedVariant.stockQty}
-                          </span>
-                          <span className="text-xs text-(--text-secondary)">
-                            Avg cost: {currency(matchedVariant.avgCost)}
-                          </span>
-                          <span className="text-xs text-(--text-secondary)">
-                            Selling: {currency(matchedVariant.sellingPrice)}
-                          </span>
-                        </div>
-                        {item.costPerUnit > 0 &&
-                        item.costPerUnit > matchedVariant.sellingPrice ? (
-                          <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--danger)/25">
-                            <span className="text-xs text-(--danger)">
-                              Cost per unit cannot be more than selling price.
+                  {/* Qty + Cost + Row total */}
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                      Qty
+                      <input
+                        className="field"
+                        min={1}
+                        onWheel={preventNumberScroll}
+                        type="number"
+                        value={item.qty}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            qty: Math.max(Number(event.target.value) || 0, 0),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                      Cost / unit
+                      <input
+                        className="field"
+                        min={0}
+                        onWheel={preventNumberScroll}
+                        placeholder="0"
+                        step="1"
+                        type="number"
+                        value={item.costPerUnit === 0 ? "" : item.costPerUnit}
+                        onChange={(event) =>
+                          updateItem(item.id, {
+                            costPerUnit: Math.max(
+                              Number(event.target.value) || 0,
+                              0,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                    <div className="grid gap-1.5">
+                      <p className="text-sm font-medium text-foreground">
+                        Total
+                      </p>
+                      <div className="flex min-h-12 items-center rounded-2xl bg-white px-4 text-sm font-semibold text-foreground ring-1 ring-(--stroke-soft)">
+                        {currency(rowTotal)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Variant match status */}
+                  <div className="mt-3">
+                    {item.productId &&
+                      (matchedVariant ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--success)/25">
+                            <span className="text-xs font-semibold text-(--success)">
+                              ✓ Variant matched
+                            </span>
+                            <span className="text-xs text-(--text-secondary)">
+                              SKU: {matchedVariant.sku}
+                            </span>
+                            <span className="text-xs text-(--text-secondary)">
+                              In stock: {matchedVariant.stockQty}
+                            </span>
+                            <span className="text-xs text-(--text-secondary)">
+                              Avg cost: {currency(matchedVariant.avgCost)}
+                            </span>
+                            <span className="text-xs text-(--text-secondary)">
+                              Selling: {currency(matchedVariant.sellingPrice)}
                             </span>
                           </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--warning)/25">
-                        <span className="text-xs text-(--warning)">
-                          ⚠ Select size and color to match a variant
-                        </span>
-                      </div>
-                    ))}
+                          {item.costPerUnit > 0 &&
+                          item.costPerUnit > matchedVariant.sellingPrice ? (
+                            <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--danger)/25">
+                              <span className="text-xs text-(--danger)">
+                                Cost per unit cannot be more than selling price.
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="rounded-xl bg-white/70 px-3 py-2 ring-1 ring-(--warning)/25">
+                          <span className="text-xs text-(--warning)">
+                            ⚠ Select size and color to match a variant
+                          </span>
+                        </div>
+                      ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         <button
           className="btn-secondary mt-4 w-full"
+          disabled={isCatalogLoading}
           onClick={() => setItems((current) => [...current, createNextItem()])}
           type="button"
         >
@@ -994,6 +1011,7 @@ export default function NewPurchasePage() {
             </span>
             <textarea
               className="field min-h-24"
+              disabled={isCatalogLoading}
               placeholder="Any context for this purchase batch"
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -1004,7 +1022,10 @@ export default function NewPurchasePage() {
           <button
             className="btn-primary w-full py-4 text-base"
             disabled={
-              isSubmitting || products.length === 0 || variants.length === 0
+              isCatalogLoading ||
+              isSubmitting ||
+              products.length === 0 ||
+              variants.length === 0
             }
             onClick={() => void submitPurchase()}
             type="button"
@@ -1086,10 +1107,10 @@ export default function NewPurchasePage() {
         </div>
 
         <div className="mt-4 grid gap-3 md:hidden">
-          {isHistoryLoading ? (
+          {isCatalogLoading || isHistoryLoading ? (
             <Card className="gap-0 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-0 shadow-none">
-              <CardContent className="px-4 py-5 text-sm text-(--text-secondary)">
-                Loading purchase history...
+              <CardContent className="px-4 py-5">
+                <Spinner label="Loading purchase history..." />
               </CardContent>
             </Card>
           ) : purchaseHistory.length === 0 ? (
@@ -1251,13 +1272,13 @@ export default function NewPurchasePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-(--stroke-soft) bg-white">
-              {isHistoryLoading ? (
+              {isCatalogLoading || isHistoryLoading ? (
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
                     colSpan={12}
                   >
-                    Loading purchase history...
+                    <Spinner label="Loading purchase history..." />
                   </td>
                 </tr>
               ) : purchaseHistory.length === 0 ? (

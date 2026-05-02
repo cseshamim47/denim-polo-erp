@@ -26,6 +26,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -167,6 +168,7 @@ function getRequestBadgeClassName(
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [openField, setOpenField] = useState<string | null>(null);
 
   const [activeListTab, setActiveListTab] = useState<"products" | "variants">(
@@ -393,25 +395,31 @@ export default function ProductsPage() {
   }, [currentVariantPage, filteredVariants]);
 
   async function loadData() {
-    const [productsResponse, variantsResponse] = await Promise.all([
-      fetch("/api/products", { cache: "no-store" }),
-      fetch("/api/variants?search=", { cache: "no-store" }),
-    ]);
+    setIsLoading(true);
 
-    if (!productsResponse.ok || !variantsResponse.ok) {
-      toast.error("Unable to load products right now.");
-      return;
+    try {
+      const [productsResponse, variantsResponse] = await Promise.all([
+        fetch("/api/products", { cache: "no-store" }),
+        fetch("/api/variants?search=", { cache: "no-store" }),
+      ]);
+
+      if (!productsResponse.ok || !variantsResponse.ok) {
+        toast.error("Unable to load products right now.");
+        return;
+      }
+
+      const productsPayload = await readJsonResponse<{ products?: Product[] }>(
+        productsResponse,
+      );
+      const variantsPayload = await readJsonResponse<{ variants?: Variant[] }>(
+        variantsResponse,
+      );
+
+      setProducts(productsPayload?.products ?? []);
+      setVariants(variantsPayload?.variants ?? []);
+    } finally {
+      setIsLoading(false);
     }
-
-    const productsPayload = await readJsonResponse<{ products?: Product[] }>(
-      productsResponse,
-    );
-    const variantsPayload = await readJsonResponse<{ variants?: Variant[] }>(
-      variantsResponse,
-    );
-
-    setProducts(productsPayload?.products ?? []);
-    setVariants(variantsPayload?.variants ?? []);
   }
 
   useEffect(() => {
@@ -439,11 +447,13 @@ export default function ProductsPage() {
         if (!cancelled) {
           setProducts(productsPayload?.products ?? []);
           setVariants(variantsPayload?.variants ?? []);
+          setIsLoading(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
           toast.error("Unable to load products right now.");
+          setIsLoading(false);
         }
       });
 
@@ -786,10 +796,11 @@ export default function ProductsPage() {
                 Product name
               </label>
               <PopoverTrigger asChild>
-                <button className="field flex items-center justify-between" type="button">
-                  <span>
-                    {productForm.name.trim() || "Product name"}
-                  </span>
+                <button
+                  className="field flex items-center justify-between"
+                  type="button"
+                >
+                  <span>{productForm.name.trim() || "Product name"}</span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
@@ -806,7 +817,9 @@ export default function ProductsPage() {
                     }}
                   />
                   <CommandList>
-                    <CommandEmpty>Type a new product name or pick one below.</CommandEmpty>
+                    <CommandEmpty>
+                      Type a new product name or pick one below.
+                    </CommandEmpty>
                     <CommandGroup>
                       {productNameSearch.trim() &&
                       !nameSuggestions.some(
@@ -829,28 +842,28 @@ export default function ProductsPage() {
                           Use &quot;{productNameSearch.trim()}&quot;
                         </CommandItem>
                       ) : null}
-                        {nameSuggestions.map((name) => (
-                          <CommandItem
-                            key={name}
-                            value={name}
-                            data-checked={
-                              productForm.name === name ? "true" : undefined
-                            }
-                            onSelect={() => {
-                              setProductForm((current) => ({
-                                ...current,
-                                name,
-                              }));
-                              setProductErrors((current) => ({
-                                ...current,
-                                name: undefined,
-                              }));
-                              setOpenField(null);
-                            }}
-                          >
-                            {name}
-                          </CommandItem>
-                        ))}
+                      {nameSuggestions.map((name) => (
+                        <CommandItem
+                          key={name}
+                          value={name}
+                          data-checked={
+                            productForm.name === name ? "true" : undefined
+                          }
+                          onSelect={() => {
+                            setProductForm((current) => ({
+                              ...current,
+                              name,
+                            }));
+                            setProductErrors((current) => ({
+                              ...current,
+                              name: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          {name}
+                        </CommandItem>
+                      ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -875,10 +888,11 @@ export default function ProductsPage() {
                 Category
               </label>
               <PopoverTrigger asChild>
-                <button className="field flex items-center justify-between" type="button">
-                  <span>
-                    {productForm.category.trim() || "Category"}
-                  </span>
+                <button
+                  className="field flex items-center justify-between"
+                  type="button"
+                >
+                  <span>{productForm.category.trim() || "Category"}</span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
@@ -895,7 +909,9 @@ export default function ProductsPage() {
                     }}
                   />
                   <CommandList>
-                    <CommandEmpty>Type a new category or pick one below.</CommandEmpty>
+                    <CommandEmpty>
+                      Type a new category or pick one below.
+                    </CommandEmpty>
                     <CommandGroup>
                       {productCategorySearch.trim() &&
                       !categorySuggestions.some(
@@ -918,30 +934,30 @@ export default function ProductsPage() {
                           Use &quot;{productCategorySearch.trim()}&quot;
                         </CommandItem>
                       ) : null}
-                        {categorySuggestions.map((category) => (
-                          <CommandItem
-                            key={category}
-                            value={category}
-                            data-checked={
-                              productForm.category === category
-                                ? "true"
-                                : undefined
-                            }
-                            onSelect={() => {
-                              setProductForm((current) => ({
-                                ...current,
-                                category,
-                              }));
-                              setProductErrors((current) => ({
-                                ...current,
-                                category: undefined,
-                              }));
-                              setOpenField(null);
-                            }}
-                          >
-                            {category}
-                          </CommandItem>
-                        ))}
+                      {categorySuggestions.map((category) => (
+                        <CommandItem
+                          key={category}
+                          value={category}
+                          data-checked={
+                            productForm.category === category
+                              ? "true"
+                              : undefined
+                          }
+                          onSelect={() => {
+                            setProductForm((current) => ({
+                              ...current,
+                              category,
+                            }));
+                            setProductErrors((current) => ({
+                              ...current,
+                              category: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          {category}
+                        </CommandItem>
+                      ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -980,10 +996,16 @@ export default function ProductsPage() {
           </div>
         </section>
 
-        <section className="rounded-[1.8rem] bg-[var(--surface-accent)] p-6 text-white lg:mt-4">
+        <section className="relative rounded-[1.8rem] bg-[var(--surface-accent)] p-6 text-white lg:mt-4">
           <h3 className="text-xl font-semibold tracking-tight">
             Create variant
           </h3>
+
+          {isLoading ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-black/15 backdrop-blur-[1px]">
+              <Spinner className="text-white" label="Loading catalog data..." />
+            </div>
+          ) : null}
 
           <div className="mt-4 space-y-4">
             <label className="mb-1 block text-sm text-white/80">Product</label>
@@ -1069,9 +1091,7 @@ export default function ProductsPage() {
                   className="field flex items-center justify-between text-[var(--text-primary)]"
                   type="button"
                 >
-                  <span>
-                    {variantForm.color.trim() || "Color"}
-                  </span>
+                  <span>{variantForm.color.trim() || "Color"}</span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
@@ -1088,7 +1108,9 @@ export default function ProductsPage() {
                     }}
                   />
                   <CommandList>
-                    <CommandEmpty>Type a new color or pick one below.</CommandEmpty>
+                    <CommandEmpty>
+                      Type a new color or pick one below.
+                    </CommandEmpty>
                     <CommandGroup>
                       {variantColorSearch.trim() &&
                       !colorSuggestions.some(
@@ -1111,28 +1133,28 @@ export default function ProductsPage() {
                           Use &quot;{variantColorSearch.trim()}&quot;
                         </CommandItem>
                       ) : null}
-                        {colorSuggestions.map((color) => (
-                          <CommandItem
-                            key={color}
-                            value={color}
-                            data-checked={
-                              variantForm.color === color ? "true" : undefined
-                            }
-                            onSelect={() => {
-                              setVariantForm((current) => ({
-                                ...current,
-                                color,
-                              }));
-                              setVariantErrors((current) => ({
-                                ...current,
-                                color: undefined,
-                              }));
-                              setOpenField(null);
-                            }}
-                          >
-                            {color}
-                          </CommandItem>
-                        ))}
+                      {colorSuggestions.map((color) => (
+                        <CommandItem
+                          key={color}
+                          value={color}
+                          data-checked={
+                            variantForm.color === color ? "true" : undefined
+                          }
+                          onSelect={() => {
+                            setVariantForm((current) => ({
+                              ...current,
+                              color,
+                            }));
+                            setVariantErrors((current) => ({
+                              ...current,
+                              color: undefined,
+                            }));
+                            setOpenField(null);
+                          }}
+                        >
+                          {color}
+                        </CommandItem>
+                      ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -1203,6 +1225,7 @@ export default function ProductsPage() {
 
           <button
             className="btn-secondary mt-3 w-full sm:w-auto"
+            disabled={isLoading}
             onClick={submitVariant}
             type="button"
           >
@@ -1211,7 +1234,13 @@ export default function ProductsPage() {
         </section>
       </div>
 
-      <section className="space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-[var(--stroke-soft)] sm:p-6">
+      <section className="relative space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-[var(--stroke-soft)] sm:p-6">
+        {isLoading ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-white/70 backdrop-blur-[1px]">
+            <Spinner label="Loading catalog records..." />
+          </div>
+        ) : null}
+
         <div className="space-y-3">
           <h3 className="text-xl font-semibold tracking-tight">
             Catalog records
@@ -1281,7 +1310,10 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field flex items-center justify-between" type="button">
+                    <button
+                      className="field flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {productFilterCategory === "all"
                           ? "All categories"
@@ -1290,7 +1322,10 @@ export default function ProductsPage() {
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search category..." />
                       <CommandList>
@@ -1298,7 +1333,11 @@ export default function ProductsPage() {
                         <CommandGroup>
                           <CommandItem
                             value="All categories"
-                            data-checked={productFilterCategory === "all" ? "true" : undefined}
+                            data-checked={
+                              productFilterCategory === "all"
+                                ? "true"
+                                : undefined
+                            }
                             onSelect={() => {
                               setProductFilterCategory("all");
                               setProductPage(1);
@@ -1311,7 +1350,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={category}
                               value={category}
-                              data-checked={productFilterCategory === category ? "true" : undefined}
+                              data-checked={
+                                productFilterCategory === category
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setProductFilterCategory(category);
                                 setProductPage(1);
@@ -1333,7 +1376,10 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field flex items-center justify-between" type="button">
+                    <button
+                      className="field flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {stockFilterOptions.find(
                           (option) => option.value === productFilterStock,
@@ -1342,7 +1388,10 @@ export default function ProductsPage() {
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search stock state..." />
                       <CommandList>
@@ -1352,7 +1401,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={option.value}
                               value={option.label}
-                              data-checked={productFilterStock === option.value ? "true" : undefined}
+                              data-checked={
+                                productFilterStock === option.value
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setProductFilterStock(option.value);
                                 setProductPage(1);
@@ -1374,16 +1427,23 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field sm:col-span-2 flex items-center justify-between" type="button">
+                    <button
+                      className="field sm:col-span-2 flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {deleteStatusOptions.find(
-                          (option) => option.value === productFilterDeleteStatus,
+                          (option) =>
+                            option.value === productFilterDeleteStatus,
                         )?.label ?? "All delete states"}
                       </span>
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search delete status..." />
                       <CommandList>
@@ -1393,7 +1453,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={option.value}
                               value={option.label}
-                              data-checked={productFilterDeleteStatus === option.value ? "true" : undefined}
+                              data-checked={
+                                productFilterDeleteStatus === option.value
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setProductFilterDeleteStatus(option.value);
                                 setProductPage(1);
@@ -1521,12 +1585,22 @@ export default function ProductsPage() {
                   <Table>
                     <TableHeader className="bg-(--surface-accent-soft)">
                       <TableRow className="hover:bg-(--surface-accent-soft)">
-                        <TableHead className="font-semibold">Product Name</TableHead>
-                        <TableHead className="font-semibold">Category</TableHead>
-                        <TableHead className="font-semibold">Description</TableHead>
-                        <TableHead className="text-center font-semibold">Stock</TableHead>
+                        <TableHead className="font-semibold">
+                          Product Name
+                        </TableHead>
+                        <TableHead className="font-semibold">
+                          Category
+                        </TableHead>
+                        <TableHead className="font-semibold">
+                          Description
+                        </TableHead>
+                        <TableHead className="text-center font-semibold">
+                          Stock
+                        </TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="text-center font-semibold">Action</TableHead>
+                        <TableHead className="text-center font-semibold">
+                          Action
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1567,9 +1641,12 @@ export default function ProductsPage() {
                               deleteRequest.status !== "none" ? (
                                 <Badge
                                   variant="outline"
-                                  className={getRequestBadgeClassName(deleteRequest.status)}
+                                  className={getRequestBadgeClassName(
+                                    deleteRequest.status,
+                                  )}
                                 >
-                                  {deleteRequest.status} ({deleteRequest.approvalCount}/
+                                  {deleteRequest.status} (
+                                  {deleteRequest.approvalCount}/
                                   {deleteRequest.requiredApprovalCount})
                                 </Badge>
                               ) : (
@@ -1692,17 +1769,25 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field flex items-center justify-between" type="button">
+                    <button
+                      className="field flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {variantFilterProductId === "all"
                           ? "All products"
-                          : products.find((product) => product.id === variantFilterProductId)
-                              ?.name ?? "All products"}
+                          : (products.find(
+                              (product) =>
+                                product.id === variantFilterProductId,
+                            )?.name ?? "All products")}
                       </span>
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search product..." />
                       <CommandList>
@@ -1710,7 +1795,11 @@ export default function ProductsPage() {
                         <CommandGroup>
                           <CommandItem
                             value="All products"
-                            data-checked={variantFilterProductId === "all" ? "true" : undefined}
+                            data-checked={
+                              variantFilterProductId === "all"
+                                ? "true"
+                                : undefined
+                            }
                             onSelect={() => {
                               setVariantFilterProductId("all");
                               setVariantPage(1);
@@ -1723,7 +1812,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={product.id}
                               value={`${product.name} ${product.category}`}
-                              data-checked={variantFilterProductId === product.id ? "true" : undefined}
+                              data-checked={
+                                variantFilterProductId === product.id
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setVariantFilterProductId(product.id);
                                 setVariantPage(1);
@@ -1745,7 +1838,10 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field flex items-center justify-between" type="button">
+                    <button
+                      className="field flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {stockFilterOptions.find(
                           (option) => option.value === variantFilterStock,
@@ -1754,7 +1850,10 @@ export default function ProductsPage() {
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search stock state..." />
                       <CommandList>
@@ -1764,7 +1863,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={option.value}
                               value={option.label}
-                              data-checked={variantFilterStock === option.value ? "true" : undefined}
+                              data-checked={
+                                variantFilterStock === option.value
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setVariantFilterStock(option.value);
                                 setVariantPage(1);
@@ -1786,16 +1889,23 @@ export default function ProductsPage() {
                   }
                 >
                   <PopoverTrigger asChild>
-                    <button className="field sm:col-span-2 flex items-center justify-between" type="button">
+                    <button
+                      className="field sm:col-span-2 flex items-center justify-between"
+                      type="button"
+                    >
                       <span>
                         {deleteStatusOptions.find(
-                          (option) => option.value === variantFilterDeleteStatus,
+                          (option) =>
+                            option.value === variantFilterDeleteStatus,
                         )?.label ?? "All delete states"}
                       </span>
                       <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent
+                    className="w-[--radix-popover-trigger-width] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search delete status..." />
                       <CommandList>
@@ -1805,7 +1915,11 @@ export default function ProductsPage() {
                             <CommandItem
                               key={option.value}
                               value={option.label}
-                              data-checked={variantFilterDeleteStatus === option.value ? "true" : undefined}
+                              data-checked={
+                                variantFilterDeleteStatus === option.value
+                                  ? "true"
+                                  : undefined
+                              }
                               onSelect={() => {
                                 setVariantFilterDeleteStatus(option.value);
                                 setVariantPage(1);
@@ -2014,10 +2128,16 @@ export default function ProductsPage() {
                         <TableHead className="font-semibold">Product</TableHead>
                         <TableHead className="font-semibold">Color</TableHead>
                         <TableHead className="font-semibold">Size</TableHead>
-                        <TableHead className="text-center font-semibold">Stock</TableHead>
-                        <TableHead className="text-right font-semibold">Selling Price</TableHead>
+                        <TableHead className="text-center font-semibold">
+                          Stock
+                        </TableHead>
+                        <TableHead className="text-right font-semibold">
+                          Selling Price
+                        </TableHead>
                         <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="text-center font-semibold">Action</TableHead>
+                        <TableHead className="text-center font-semibold">
+                          Action
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -2069,9 +2189,12 @@ export default function ProductsPage() {
                                 updateRequest.status !== "none" ? (
                                   <Badge
                                     variant="outline"
-                                    className={getRequestBadgeClassName(updateRequest.status)}
+                                    className={getRequestBadgeClassName(
+                                      updateRequest.status,
+                                    )}
                                   >
-                                    update {updateRequest.status} ({updateRequest.approvalCount}/
+                                    update {updateRequest.status} (
+                                    {updateRequest.approvalCount}/
                                     {updateRequest.requiredApprovalCount})
                                   </Badge>
                                 ) : null}
@@ -2079,9 +2202,12 @@ export default function ProductsPage() {
                                 deleteRequest.status !== "none" ? (
                                   <Badge
                                     variant="outline"
-                                    className={getRequestBadgeClassName(deleteRequest.status)}
+                                    className={getRequestBadgeClassName(
+                                      deleteRequest.status,
+                                    )}
                                   >
-                                    delete {deleteRequest.status} ({deleteRequest.approvalCount}/
+                                    delete {deleteRequest.status} (
+                                    {deleteRequest.approvalCount}/
                                     {deleteRequest.requiredApprovalCount})
                                   </Badge>
                                 ) : null}

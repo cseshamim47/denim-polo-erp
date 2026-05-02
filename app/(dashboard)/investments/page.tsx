@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { WheelEvent } from "react";
+import type { SetStateAction, WheelEvent } from "react";
 import { ChevronsUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 
 type InvestmentsResponse = {
   balance: {
@@ -134,6 +135,7 @@ function getInvestmentStatusClassName(
 
 export default function InvestmentsPage() {
   const [data, setData] = useState<InvestmentsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [openFilterField, setOpenFilterField] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     page: 1,
@@ -153,7 +155,14 @@ export default function InvestmentsPage() {
     note: string;
   } | null>(null);
 
+  function updateFilters(nextFilters: SetStateAction<typeof filters>) {
+    setIsLoading(true);
+    setFilters(nextFilters);
+  }
+
   async function load(nextFilters = filters) {
+    setIsLoading(true);
+
     const params = new URLSearchParams();
     params.set("page", String(nextFilters.page));
     params.set("pageSize", "10");
@@ -169,6 +178,7 @@ export default function InvestmentsPage() {
     });
 
     if (!response.ok) {
+      setIsLoading(false);
       toast.error("Unable to load investments right now.");
       return;
     }
@@ -176,11 +186,13 @@ export default function InvestmentsPage() {
     const payload = await readJsonResponse<InvestmentsResponse>(response);
 
     if (!payload) {
+      setIsLoading(false);
       toast.error("Investments response was empty.");
       return;
     }
 
     setData(payload);
+    setIsLoading(false);
   }
 
   useEffect(() => {
@@ -200,6 +212,7 @@ export default function InvestmentsPage() {
       .then(async (response) => {
         if (!response.ok) {
           if (!cancelled) {
+            setIsLoading(false);
             toast.error("Unable to load investments right now.");
           }
           return;
@@ -209,6 +222,7 @@ export default function InvestmentsPage() {
 
         if (!payload) {
           if (!cancelled) {
+            setIsLoading(false);
             toast.error("Investments response was empty.");
           }
           return;
@@ -216,10 +230,12 @@ export default function InvestmentsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setIsLoading(false);
         }
       })
       .catch(() => {
         if (!cancelled) {
+          setIsLoading(false);
           toast.error("Unable to load investments right now.");
         }
       });
@@ -318,25 +334,44 @@ export default function InvestmentsPage() {
           </div>
           <div className="rounded-[1.2rem] bg-(--surface-accent-soft) p-4">
             <p className="text-sm text-(--text-secondary)">Balance in hand</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
-              {currency(data?.balance.currentBalance ?? 0)}
-            </p>
+            {isLoading ? (
+              <Spinner
+                className="mt-5 justify-start"
+                label="Loading balance..."
+              />
+            ) : (
+              <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
+                {currency(data?.balance.currentBalance ?? 0)}
+              </p>
+            )}
           </div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(data?.approvedTotals ?? []).map((partner) => (
-            <div
-              key={partner.partnerId}
-              className="rounded-[1.2rem] border border-(--stroke-soft) bg-(--surface-accent-soft) p-4"
-            >
-              <p className="text-sm text-(--text-secondary)">
-                {partner.partnerName}
-              </p>
-              <p className="mt-2 text-xl font-semibold text-foreground">
-                {currency(partner.totalApprovedInvestment)}
-              </p>
-            </div>
-          ))}
+          {isLoading
+            ? Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={`approved-total-loading-${index}`}
+                  className="rounded-[1.2rem] border border-(--stroke-soft) bg-(--surface-accent-soft) p-4"
+                >
+                  <Spinner
+                    className="min-h-18"
+                    label="Loading partner totals..."
+                  />
+                </div>
+              ))
+            : (data?.approvedTotals ?? []).map((partner) => (
+                <div
+                  key={partner.partnerId}
+                  className="rounded-[1.2rem] border border-(--stroke-soft) bg-(--surface-accent-soft) p-4"
+                >
+                  <p className="text-sm text-(--text-secondary)">
+                    {partner.partnerName}
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-foreground">
+                    {currency(partner.totalApprovedInvestment)}
+                  </p>
+                </div>
+              ))}
         </div>
       </section>
 
@@ -434,7 +469,7 @@ export default function InvestmentsPage() {
                             filters.scope === option.value ? "true" : undefined
                           }
                           onSelect={() => {
-                            setFilters((current) => ({
+                            updateFilters((current) => ({
                               ...current,
                               scope: option.value,
                               page: 1,
@@ -483,7 +518,7 @@ export default function InvestmentsPage() {
                         value="All partners"
                         data-checked={filters.owner === "" ? "true" : undefined}
                         onSelect={() => {
-                          setFilters((current) => ({
+                          updateFilters((current) => ({
                             ...current,
                             owner: "",
                             page: 1,
@@ -501,7 +536,7 @@ export default function InvestmentsPage() {
                             filters.owner === partner.id ? "true" : undefined
                           }
                           onSelect={() => {
-                            setFilters((current) => ({
+                            updateFilters((current) => ({
                               ...current,
                               owner: partner.id,
                               page: 1,
@@ -554,7 +589,7 @@ export default function InvestmentsPage() {
                             filters.status === option.value ? "true" : undefined
                           }
                           onSelect={() => {
-                            setFilters((current) => ({
+                            updateFilters((current) => ({
                               ...current,
                               status: option.value,
                               page: 1,
@@ -574,7 +609,7 @@ export default function InvestmentsPage() {
             <input
               className="field"
               onChange={(event) =>
-                setFilters((current) => ({
+                updateFilters((current) => ({
                   ...current,
                   from: event.target.value,
                   page: 1,
@@ -586,7 +621,7 @@ export default function InvestmentsPage() {
             <input
               className="field"
               onChange={(event) =>
-                setFilters((current) => ({
+                updateFilters((current) => ({
                   ...current,
                   to: event.target.value,
                   page: 1,
@@ -608,7 +643,7 @@ export default function InvestmentsPage() {
                   from: "",
                   to: "",
                 };
-                setFilters(reset);
+                updateFilters(reset);
               }}
               type="button"
             >
@@ -624,11 +659,27 @@ export default function InvestmentsPage() {
             Investment history
           </h3>
           <p className="text-sm text-(--text-secondary)">
-            {data?.pagination.totalCount ?? 0} record(s)
+            {isLoading
+              ? "Loading..."
+              : `${data?.pagination.totalCount ?? 0} record(s)`}
           </p>
         </div>
         <div className="mt-4 grid gap-4 md:hidden">
-          {(data?.investments ?? []).length > 0 ? (
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_, index) => (
+              <Card
+                key={`investment-loading-mobile-${index}`}
+                className="gap-0 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-0 shadow-none"
+              >
+                <CardContent className="px-4 py-5">
+                  <Spinner
+                    className="min-h-20"
+                    label="Loading investments..."
+                  />
+                </CardContent>
+              </Card>
+            ))
+          ) : (data?.investments ?? []).length > 0 ? (
             (data?.investments ?? []).map((investment) => (
               <Card
                 key={investment.id}
@@ -767,94 +818,106 @@ export default function InvestmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
-              {(data?.investments ?? []).map((investment) => (
-                <tr key={investment.id} className="align-top">
-                  <td className="px-3 py-3 font-medium text-foreground">
-                    {investment.partnerName}
-                  </td>
-                  <td className="px-3 py-3 text-(--text-secondary)">
-                    {new Date(investment.investedAt).toLocaleDateString(
-                      "en-BD",
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-(--text-secondary)">
-                    {new Date(investment.submittedAt).toLocaleDateString(
-                      "en-BD",
-                    )}
-                  </td>
-                  <td className="px-3 py-3 text-right font-semibold text-foreground">
-                    {currency(investment.amount)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-flex rounded-full bg-(--surface-accent-soft) px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
-                      {investment.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-(--text-secondary)">
-                    <div className="grid gap-1">
-                      <span className="text-xs font-medium">
-                        {investment.approvalCount}/
-                        {investment.requiredApprovalCount}
-                      </span>
-                      {investment.approvals.length > 0 ? (
-                        investment.approvals.map((approval) => (
-                          <span
-                            key={`${investment.id}-${approval.partnerId}`}
-                            className="text-xs leading-5"
-                          >
-                            {approval.partnerName} {approval.decision}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs">No review yet</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    {investment.note?.trim() ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          setSelectedNote({
-                            title: investment.partnerName,
-                            note: investment.note ?? "",
-                          })
-                        }
-                      >
-                        View Note
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-(--text-secondary)">
-                        No note
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3">
-                    {investment.canReview ? (
-                      <div className="flex justify-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => void review(investment.id, "approved")}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => void review(investment.id, "rejected")}
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="text-center text-xs text-(--text-secondary)">
-                        No action
-                      </div>
-                    )}
+              {isLoading ? (
+                <tr>
+                  <td className="px-3 py-8" colSpan={8}>
+                    <Spinner label="Loading investment history..." />
                   </td>
                 </tr>
-              ))}
+              ) : (
+                (data?.investments ?? []).map((investment) => (
+                  <tr key={investment.id} className="align-top">
+                    <td className="px-3 py-3 font-medium text-foreground">
+                      {investment.partnerName}
+                    </td>
+                    <td className="px-3 py-3 text-(--text-secondary)">
+                      {new Date(investment.investedAt).toLocaleDateString(
+                        "en-BD",
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-(--text-secondary)">
+                      {new Date(investment.submittedAt).toLocaleDateString(
+                        "en-BD",
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold text-foreground">
+                      {currency(investment.amount)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="inline-flex rounded-full bg-(--surface-accent-soft) px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
+                        {investment.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-(--text-secondary)">
+                      <div className="grid gap-1">
+                        <span className="text-xs font-medium">
+                          {investment.approvalCount}/
+                          {investment.requiredApprovalCount}
+                        </span>
+                        {investment.approvals.length > 0 ? (
+                          investment.approvals.map((approval) => (
+                            <span
+                              key={`${investment.id}-${approval.partnerId}`}
+                              className="text-xs leading-5"
+                            >
+                              {approval.partnerName} {approval.decision}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs">No review yet</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      {investment.note?.trim() ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setSelectedNote({
+                              title: investment.partnerName,
+                              note: investment.note ?? "",
+                            })
+                          }
+                        >
+                          View Note
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-(--text-secondary)">
+                          No note
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {investment.canReview ? (
+                        <div className="flex justify-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              void review(investment.id, "approved")
+                            }
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() =>
+                              void review(investment.id, "rejected")
+                            }
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-center text-xs text-(--text-secondary)">
+                          No action
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -864,7 +927,7 @@ export default function InvestmentsPage() {
             disabled={(data?.pagination.page ?? 1) <= 1}
             onClick={() => {
               const next = { ...filters, page: Math.max(filters.page - 1, 1) };
-              setFilters(next);
+              updateFilters(next);
             }}
             type="button"
           >
@@ -887,7 +950,7 @@ export default function InvestmentsPage() {
                   data?.pagination.totalPages ?? filters.page + 1,
                 ),
               };
-              setFilters(next);
+              updateFilters(next);
             }}
             type="button"
           >
