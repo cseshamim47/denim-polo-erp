@@ -325,12 +325,18 @@ export default function ExpensesPage() {
                 }}
               >
                 <PopoverTrigger asChild>
-                  <button className="field flex items-center justify-between" type="button">
+                  <button
+                    className="field flex items-center justify-between"
+                    type="button"
+                  >
                     <span>{form.title.trim() || "Title"}</span>
                     <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <PopoverContent
+                  className="w-[--radix-popover-trigger-width] p-0"
+                  align="start"
+                >
                   <Command>
                     <CommandInput
                       placeholder="Search or enter title..."
@@ -338,7 +344,9 @@ export default function ExpensesPage() {
                       onValueChange={(value) => setTitleSearch(value)}
                     />
                     <CommandList>
-                      <CommandEmpty>Type a new title or pick one below.</CommandEmpty>
+                      <CommandEmpty>
+                        Type a new title or pick one below.
+                      </CommandEmpty>
                       <CommandGroup>
                         {titleSearch.trim() &&
                         !(data?.titleSuggestions ?? []).some(
@@ -367,7 +375,9 @@ export default function ExpensesPage() {
                           <CommandItem
                             key={title}
                             value={title}
-                            data-checked={form.title === title ? "true" : undefined}
+                            data-checked={
+                              form.title === title ? "true" : undefined
+                            }
                             onSelect={() => {
                               setForm((current) => ({ ...current, title }));
                               setFieldErrors((current) => ({
@@ -450,17 +460,27 @@ export default function ExpensesPage() {
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Popover
               open={openField === "filter-scope"}
-              onOpenChange={(open) => setOpenField(open ? "filter-scope" : null)}
+              onOpenChange={(open) =>
+                setOpenField(open ? "filter-scope" : null)
+              }
             >
               <PopoverTrigger asChild>
-                <button className="field flex items-center justify-between" type="button">
+                <button
+                  className="field flex items-center justify-between"
+                  type="button"
+                >
                   <span>
-                    {scopeOptions.find((option) => option.value === filters.scope)?.label ?? "All expenses"}
+                    {scopeOptions.find(
+                      (option) => option.value === filters.scope,
+                    )?.label ?? "All expenses"}
                   </span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
                 <Command>
                   <CommandInput placeholder="Search scope..." />
                   <CommandList>
@@ -470,7 +490,9 @@ export default function ExpensesPage() {
                         <CommandItem
                           key={option.value}
                           value={option.label}
-                          data-checked={filters.scope === option.value ? "true" : undefined}
+                          data-checked={
+                            filters.scope === option.value ? "true" : undefined
+                          }
                           onSelect={() => {
                             setFilters((current) => ({
                               ...current,
@@ -490,19 +512,29 @@ export default function ExpensesPage() {
             </Popover>
             <Popover
               open={openField === "filter-owner"}
-              onOpenChange={(open) => setOpenField(open ? "filter-owner" : null)}
+              onOpenChange={(open) =>
+                setOpenField(open ? "filter-owner" : null)
+              }
             >
               <PopoverTrigger asChild>
-                <button className="field flex items-center justify-between" type="button">
+                <button
+                  className="field flex items-center justify-between"
+                  type="button"
+                >
                   <span>
                     {filters.owner
-                      ? data?.partners.find((partner) => partner.id === filters.owner)?.name ?? "All partners"
+                      ? (data?.partners.find(
+                          (partner) => partner.id === filters.owner,
+                        )?.name ?? "All partners")
                       : "All partners"}
                   </span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
                 <Command>
                   <CommandInput placeholder="Search partner..." />
                   <CommandList>
@@ -526,7 +558,9 @@ export default function ExpensesPage() {
                         <CommandItem
                           key={partner.id}
                           value={`${partner.name} ${partner.email}`}
-                          data-checked={filters.owner === partner.id ? "true" : undefined}
+                          data-checked={
+                            filters.owner === partner.id ? "true" : undefined
+                          }
                           onSelect={() => {
                             setFilters((current) => ({
                               ...current,
@@ -546,17 +580,27 @@ export default function ExpensesPage() {
             </Popover>
             <Popover
               open={openField === "filter-status"}
-              onOpenChange={(open) => setOpenField(open ? "filter-status" : null)}
+              onOpenChange={(open) =>
+                setOpenField(open ? "filter-status" : null)
+              }
             >
               <PopoverTrigger asChild>
-                <button className="field flex items-center justify-between" type="button">
+                <button
+                  className="field flex items-center justify-between"
+                  type="button"
+                >
                   <span>
-                    {statusOptions.find((option) => option.value === filters.status)?.label ?? "All statuses"}
+                    {statusOptions.find(
+                      (option) => option.value === filters.status,
+                    )?.label ?? "All statuses"}
                   </span>
                   <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+              >
                 <Command>
                   <CommandInput placeholder="Search status..." />
                   <CommandList>
@@ -566,7 +610,9 @@ export default function ExpensesPage() {
                         <CommandItem
                           key={option.label}
                           value={option.label}
-                          data-checked={filters.status === option.value ? "true" : undefined}
+                          data-checked={
+                            filters.status === option.value ? "true" : undefined
+                          }
                           onSelect={() => {
                             setFilters((current) => ({
                               ...current,
@@ -651,13 +697,21 @@ export default function ExpensesPage() {
         <div className="mt-4 grid gap-4 md:hidden">
           {(data?.expenses ?? []).length > 0 ? (
             (data?.expenses ?? []).map((expense) => (
-              <Card key={expense.id} className="gap-4 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-4 shadow-none">
+              <Card
+                key={expense.id}
+                className="gap-4 rounded-[1.2rem] border-(--stroke-soft) bg-white/90 py-4 shadow-none"
+              >
                 <CardHeader className="px-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <CardTitle className="text-base">{expense.title}</CardTitle>
+                      <CardTitle className="text-base">
+                        {expense.title}
+                      </CardTitle>
                       <CardDescription>
-                        {expense.submittedByName} · {new Date(expense.expenseDate).toLocaleDateString("en-BD")}
+                        {expense.submittedByName} ·{" "}
+                        {new Date(expense.expenseDate).toLocaleDateString(
+                          "en-BD",
+                        )}
                       </CardDescription>
                     </div>
                     <Badge
@@ -683,7 +737,9 @@ export default function ExpensesPage() {
                         Submitted
                       </p>
                       <p className="mt-1 font-medium text-foreground">
-                        {new Date(expense.submittedAt).toLocaleDateString("en-BD")}
+                        {new Date(expense.submittedAt).toLocaleDateString(
+                          "en-BD",
+                        )}
                       </p>
                     </div>
                   </div>
@@ -739,7 +795,9 @@ export default function ExpensesPage() {
                       <Button
                         size="sm"
                         className="w-full"
-                        onClick={() => void reviewExpense(expense.id, "approved")}
+                        onClick={() =>
+                          void reviewExpense(expense.id, "approved")
+                        }
                       >
                         Approve
                       </Button>
@@ -747,7 +805,9 @@ export default function ExpensesPage() {
                         variant="destructive"
                         size="sm"
                         className="w-full"
-                        onClick={() => void reviewExpense(expense.id, "rejected")}
+                        onClick={() =>
+                          void reviewExpense(expense.id, "rejected")
+                        }
                       >
                         Reject
                       </Button>
@@ -774,7 +834,9 @@ export default function ExpensesPage() {
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Title</th>
                 <th className="px-3 py-2 text-left font-semibold">Owner</th>
-                <th className="px-3 py-2 text-left font-semibold">Expense Date</th>
+                <th className="px-3 py-2 text-left font-semibold">
+                  Expense Date
+                </th>
                 <th className="px-3 py-2 text-left font-semibold">Submitted</th>
                 <th className="px-3 py-2 text-right font-semibold">Amount</th>
                 <th className="px-3 py-2 text-left font-semibold">Status</th>
@@ -811,16 +873,18 @@ export default function ExpensesPage() {
                       <span className="text-xs font-medium">
                         {expense.approvalCount}/{expense.requiredApprovalCount}
                       </span>
-                      {expense.approvals.length > 0
-                        ? expense.approvals.map((approval) => (
-                            <span
-                              key={`${expense.id}-${approval.partnerId}`}
-                              className="text-xs leading-5"
-                            >
-                              {approval.partnerName} {approval.decision}
-                            </span>
-                          ))
-                        : <span className="text-xs">No review yet</span>}
+                      {expense.approvals.length > 0 ? (
+                        expense.approvals.map((approval) => (
+                          <span
+                            key={`${expense.id}-${approval.partnerId}`}
+                            className="text-xs leading-5"
+                          >
+                            {approval.partnerName} {approval.decision}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs">No review yet</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-3 text-center">
@@ -838,7 +902,9 @@ export default function ExpensesPage() {
                         View Note
                       </Button>
                     ) : (
-                      <span className="text-xs text-(--text-secondary)">No note</span>
+                      <span className="text-xs text-(--text-secondary)">
+                        No note
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-3">
@@ -846,14 +912,18 @@ export default function ExpensesPage() {
                       <div className="flex justify-center gap-2">
                         <Button
                           size="sm"
-                          onClick={() => void reviewExpense(expense.id, "approved")}
+                          onClick={() =>
+                            void reviewExpense(expense.id, "approved")
+                          }
                         >
                           Approve
                         </Button>
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => void reviewExpense(expense.id, "rejected")}
+                          onClick={() =>
+                            void reviewExpense(expense.id, "rejected")
+                          }
                         >
                           Reject
                         </Button>
@@ -903,7 +973,10 @@ export default function ExpensesPage() {
         </div>
       </section>
 
-      <Dialog open={Boolean(selectedNote)} onOpenChange={(open) => !open && setSelectedNote(null)}>
+      <Dialog
+        open={Boolean(selectedNote)}
+        onOpenChange={(open) => !open && setSelectedNote(null)}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{selectedNote?.title ?? "Note"}</DialogTitle>

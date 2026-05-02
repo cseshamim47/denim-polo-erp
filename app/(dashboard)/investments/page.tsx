@@ -641,15 +641,23 @@ export default function InvestmentsPage() {
                         {investment.partnerName}
                       </CardTitle>
                       <p className="mt-1 text-sm text-(--text-secondary)">
-                        Invested {new Date(investment.investedAt).toLocaleDateString("en-BD")}
+                        Invested{" "}
+                        {new Date(investment.investedAt).toLocaleDateString(
+                          "en-BD",
+                        )}
                       </p>
                       <p className="mt-1 text-xs text-(--text-secondary)">
-                        Submitted {new Date(investment.submittedAt).toLocaleDateString("en-BD")}
+                        Submitted{" "}
+                        {new Date(investment.submittedAt).toLocaleDateString(
+                          "en-BD",
+                        )}
                       </p>
                     </div>
                     <Badge
                       variant="outline"
-                      className={getInvestmentStatusClassName(investment.status)}
+                      className={getInvestmentStatusClassName(
+                        investment.status,
+                      )}
                     >
                       {investment.status}
                     </Badge>
@@ -669,7 +677,8 @@ export default function InvestmentsPage() {
                       Approval progress
                     </p>
                     <p className="text-sm font-medium text-foreground">
-                      {investment.approvalCount}/{investment.requiredApprovalCount}
+                      {investment.approvalCount}/
+                      {investment.requiredApprovalCount}
                     </p>
                     <div className="grid gap-1.5 text-xs text-(--text-secondary)">
                       {investment.approvals.length > 0 ? (
@@ -764,10 +773,14 @@ export default function InvestmentsPage() {
                     {investment.partnerName}
                   </td>
                   <td className="px-3 py-3 text-(--text-secondary)">
-                    {new Date(investment.investedAt).toLocaleDateString("en-BD")}
+                    {new Date(investment.investedAt).toLocaleDateString(
+                      "en-BD",
+                    )}
                   </td>
                   <td className="px-3 py-3 text-(--text-secondary)">
-                    {new Date(investment.submittedAt).toLocaleDateString("en-BD")}
+                    {new Date(investment.submittedAt).toLocaleDateString(
+                      "en-BD",
+                    )}
                   </td>
                   <td className="px-3 py-3 text-right font-semibold text-foreground">
                     {currency(investment.amount)}
@@ -780,18 +793,21 @@ export default function InvestmentsPage() {
                   <td className="px-3 py-3 text-(--text-secondary)">
                     <div className="grid gap-1">
                       <span className="text-xs font-medium">
-                        {investment.approvalCount}/{investment.requiredApprovalCount}
+                        {investment.approvalCount}/
+                        {investment.requiredApprovalCount}
                       </span>
-                      {investment.approvals.length > 0
-                        ? investment.approvals.map((approval) => (
-                            <span
-                              key={`${investment.id}-${approval.partnerId}`}
-                              className="text-xs leading-5"
-                            >
-                              {approval.partnerName} {approval.decision}
-                            </span>
-                          ))
-                        : <span className="text-xs">No review yet</span>}
+                      {investment.approvals.length > 0 ? (
+                        investment.approvals.map((approval) => (
+                          <span
+                            key={`${investment.id}-${approval.partnerId}`}
+                            className="text-xs leading-5"
+                          >
+                            {approval.partnerName} {approval.decision}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs">No review yet</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-3 text-center">
@@ -809,7 +825,9 @@ export default function InvestmentsPage() {
                         View Note
                       </Button>
                     ) : (
-                      <span className="text-xs text-(--text-secondary)">No note</span>
+                      <span className="text-xs text-(--text-secondary)">
+                        No note
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-3">
@@ -878,7 +896,10 @@ export default function InvestmentsPage() {
         </div>
       </section>
 
-      <Dialog open={Boolean(selectedNote)} onOpenChange={(open) => !open && setSelectedNote(null)}>
+      <Dialog
+        open={Boolean(selectedNote)}
+        onOpenChange={(open) => !open && setSelectedNote(null)}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{selectedNote?.title ?? "Note"}</DialogTitle>

@@ -1135,14 +1135,18 @@ export default function NewPurchasePage() {
                         Date
                       </p>
                       <p className="mt-1 font-medium text-foreground">
-                        {new Date(record.purchaseDate).toLocaleDateString("en-BD")}
+                        {new Date(record.purchaseDate).toLocaleDateString(
+                          "en-BD",
+                        )}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
                         Qty
                       </p>
-                      <p className="mt-1 font-medium text-foreground">{record.qty}</p>
+                      <p className="mt-1 font-medium text-foreground">
+                        {record.qty}
+                      </p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wide text-(--text-secondary)">
@@ -1193,7 +1197,9 @@ export default function NewPurchasePage() {
                         <Button
                           className="w-full"
                           size="sm"
-                          onClick={() => void reviewPurchase(record.id, "approved")}
+                          onClick={() =>
+                            void reviewPurchase(record.id, "approved")
+                          }
                           type="button"
                         >
                           Approve
@@ -1202,7 +1208,9 @@ export default function NewPurchasePage() {
                           className="w-full"
                           variant="destructive"
                           size="sm"
-                          onClick={() => void reviewPurchase(record.id, "rejected")}
+                          onClick={() =>
+                            void reviewPurchase(record.id, "rejected")
+                          }
                           type="button"
                         >
                           Reject

@@ -62,7 +62,9 @@ export default function ReturnsPage() {
   }, []);
 
   const selectedSale = sales.find((sale) => sale.id === selectedSaleId);
-  const selectedLine = selectedSale?.items.find((item) => item.id === selectedLineId);
+  const selectedLine = selectedSale?.items.find(
+    (item) => item.id === selectedLineId,
+  );
 
   async function submitReturn() {
     const loadingToastId = toast.loading("Saving return...");
@@ -97,119 +99,135 @@ export default function ReturnsPage() {
     <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
       <Card className="gap-4 rounded-[1.8rem] border-(--stroke-soft) bg-white/80 py-6 shadow-none">
         <CardHeader>
-          <CardTitle className="text-2xl tracking-tight">Process return</CardTitle>
+          <CardTitle className="text-2xl tracking-tight">
+            Process return
+          </CardTitle>
           <CardDescription>
-            Pick a sale, choose the affected line, then record whether the unit returns to stock or becomes damaged inventory.
+            Pick a sale, choose the affected line, then record whether the unit
+            returns to stock or becomes damaged inventory.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-        <select
-          className="field"
-          value={selectedSaleId}
-          onChange={(event) => {
-            setSelectedSaleId(event.target.value);
-            setSelectedLineId("");
-          }}
-        >
-          <option value="">Select sale</option>
-          {sales.map((sale) => (
-            <option key={sale.id} value={sale.id}>
-              {sale.saleNumber} · {sale.saleDate.slice(0, 10)}
-            </option>
-          ))}
-        </select>
-        {selectedSale ? (
-          <Card className="gap-3 rounded-[1.2rem] border-(--stroke-soft) bg-(--surface-accent-soft) py-4 shadow-none">
-            <CardHeader className="px-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-base">{selectedSale.saleNumber}</CardTitle>
-                  <CardDescription>
-                    Sold on {new Date(selectedSale.saleDate).toLocaleDateString("en-BD")}
-                  </CardDescription>
-                </div>
-                <Badge variant="outline">{selectedSale.items.length} lines</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-2 px-4">
-              {selectedSale.items.map((item) => (
-                <button
-                  key={item.id}
-                  className={`rounded-xl border px-3 py-3 text-left transition-colors ${selectedLineId === item.id ? "border-primary bg-white" : "border-(--stroke-soft) bg-white/70"}`}
-                  onClick={() => setSelectedLineId(item.id)}
-                  type="button"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{item.skuSnapshot}</p>
-                      <p className="mt-1 text-xs text-(--text-secondary)">
-                        {item.productSnapshot} · {item.colorSnapshot} / {item.sizeSnapshot}
-                      </p>
-                    </div>
-                    <Badge variant="outline">qty {item.qty}</Badge>
-                  </div>
-                  <p className="mt-2 text-xs text-(--text-secondary)">
-                    Already resolved {item.returnedQty + item.damagedQty}
-                  </p>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-        <select
-          className="field"
-          value={selectedLineId}
-          onChange={(event) => setSelectedLineId(event.target.value)}
-        >
-          <option value="">Select sale line</option>
-          {selectedSale?.items.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.skuSnapshot} · qty {item.qty} · resolved{" "}
-              {item.returnedQty + item.damagedQty}
-            </option>
-          ))}
-        </select>
-        <div className="grid gap-4 md:grid-cols-2">
-          <input
-            className="field"
-            type="number"
-            min={1}
-            value={qty}
-            onChange={(event) => setQty(Number(event.target.value) || 1)}
-          />
           <select
             className="field"
-            value={returnType}
-            onChange={(event) =>
-              setReturnType(event.target.value as "customer_return" | "damaged")
-            }
+            value={selectedSaleId}
+            onChange={(event) => {
+              setSelectedSaleId(event.target.value);
+              setSelectedLineId("");
+            }}
           >
-            <option value="customer_return">Customer return</option>
-            <option value="damaged">Damaged</option>
+            <option value="">Select sale</option>
+            {sales.map((sale) => (
+              <option key={sale.id} value={sale.id}>
+                {sale.saleNumber} · {sale.saleDate.slice(0, 10)}
+              </option>
+            ))}
           </select>
-        </div>
-        {selectedLine ? (
-          <div className="rounded-[1.2rem] border border-(--stroke-soft) bg-(--surface-accent-soft) p-4 text-sm text-foreground">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-medium">Selected line</p>
-                <p className="mt-1 text-xs text-(--text-secondary)">
-                  {selectedLine.skuSnapshot} · {selectedLine.productSnapshot}
-                </p>
-              </div>
-              <Badge variant="outline">
-                resolved {selectedLine.returnedQty + selectedLine.damagedQty}/{selectedLine.qty}
-              </Badge>
-            </div>
+          {selectedSale ? (
+            <Card className="gap-3 rounded-[1.2rem] border-(--stroke-soft) bg-(--surface-accent-soft) py-4 shadow-none">
+              <CardHeader className="px-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">
+                      {selectedSale.saleNumber}
+                    </CardTitle>
+                    <CardDescription>
+                      Sold on{" "}
+                      {new Date(selectedSale.saleDate).toLocaleDateString(
+                        "en-BD",
+                      )}
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline">
+                    {selectedSale.items.length} lines
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-2 px-4">
+                {selectedSale.items.map((item) => (
+                  <button
+                    key={item.id}
+                    className={`rounded-xl border px-3 py-3 text-left transition-colors ${selectedLineId === item.id ? "border-primary bg-white" : "border-(--stroke-soft) bg-white/70"}`}
+                    onClick={() => setSelectedLineId(item.id)}
+                    type="button"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {item.skuSnapshot}
+                        </p>
+                        <p className="mt-1 text-xs text-(--text-secondary)">
+                          {item.productSnapshot} · {item.colorSnapshot} /{" "}
+                          {item.sizeSnapshot}
+                        </p>
+                      </div>
+                      <Badge variant="outline">qty {item.qty}</Badge>
+                    </div>
+                    <p className="mt-2 text-xs text-(--text-secondary)">
+                      Already resolved {item.returnedQty + item.damagedQty}
+                    </p>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
+          <select
+            className="field"
+            value={selectedLineId}
+            onChange={(event) => setSelectedLineId(event.target.value)}
+          >
+            <option value="">Select sale line</option>
+            {selectedSale?.items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.skuSnapshot} · qty {item.qty} · resolved{" "}
+                {item.returnedQty + item.damagedQty}
+              </option>
+            ))}
+          </select>
+          <div className="grid gap-4 md:grid-cols-2">
+            <input
+              className="field"
+              type="number"
+              min={1}
+              value={qty}
+              onChange={(event) => setQty(Number(event.target.value) || 1)}
+            />
+            <select
+              className="field"
+              value={returnType}
+              onChange={(event) =>
+                setReturnType(
+                  event.target.value as "customer_return" | "damaged",
+                )
+              }
+            >
+              <option value="customer_return">Customer return</option>
+              <option value="damaged">Damaged</option>
+            </select>
           </div>
-        ) : null}
-        <Button
-          className="w-full sm:w-auto"
-          onClick={submitReturn}
-          type="button"
-        >
-          Save return
-        </Button>
+          {selectedLine ? (
+            <div className="rounded-[1.2rem] border border-(--stroke-soft) bg-(--surface-accent-soft) p-4 text-sm text-foreground">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium">Selected line</p>
+                  <p className="mt-1 text-xs text-(--text-secondary)">
+                    {selectedLine.skuSnapshot} · {selectedLine.productSnapshot}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  resolved {selectedLine.returnedQty + selectedLine.damagedQty}/
+                  {selectedLine.qty}
+                </Badge>
+              </div>
+            </div>
+          ) : null}
+          <Button
+            className="w-full sm:w-auto"
+            onClick={submitReturn}
+            type="button"
+          >
+            Save return
+          </Button>
         </CardContent>
       </Card>
       <Card className="gap-4 rounded-[1.8rem] border-(--stroke-soft) bg-(--surface-accent-soft) py-6 shadow-none">
