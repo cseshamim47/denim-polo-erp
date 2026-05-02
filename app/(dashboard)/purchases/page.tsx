@@ -40,18 +40,13 @@ type PurchaseHistoryRecord = {
   color: string;
   qty: number;
   costPerUnit: number;
-  additionalCost: number;
   totalCost: number;
-  cashOutTotal: number;
   note: string | null;
 };
 
 type PurchasePayload = {
   purchaseDate: string;
-  transportCost: number;
-  otherCost: number;
   subtotal: number;
-  grandTotal: number;
   items: Array<{
     variantId: string;
     productId: string;
@@ -62,7 +57,6 @@ type PurchasePayload = {
     color: string;
     qty: number;
     costPerUnit: number;
-    additionalCost: number;
     total: number;
   }>;
 };
@@ -125,55 +119,18 @@ function getErrorMessage(error: unknown) {
 }
 
 function buildBatchNote(payload: PurchasePayload) {
-  const lines = [
-    `Batch subtotal: ${payload.subtotal.toFixed(2)}`,
-    `Transport cost: ${payload.transportCost.toFixed(2)}`,
-    `Other cost: ${payload.otherCost.toFixed(2)}`,
-    `Batch grand total: ${payload.grandTotal.toFixed(2)}`,
-  ].filter(Boolean);
-
-  return lines.join("\n");
-}
-
-function allocateAdditionalCosts(
-  items: PurchasePayload["items"],
-  totalExtraCost: number,
-) {
-  const totalExtraCostInPaisa = Math.round(totalExtraCost * 100);
-
-  if (items.length === 0 || totalExtraCostInPaisa === 0) {
-    return items.map(() => 0);
-  }
-
-  const weights = items.map((item) =>
-    Math.max(Math.round(item.total * 100), 1),
-  );
-  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-  let allocated = 0;
-
-  return items.map((_, index) => {
-    if (index === items.length - 1) {
-      return (totalExtraCostInPaisa - allocated) / 100;
-    }
-
-    const share = Math.floor(
-      (totalExtraCostInPaisa * weights[index]) / totalWeight,
-    );
-    allocated += share;
-    return share / 100;
-  });
+  return `Batch subtotal: ${payload.subtotal.toFixed(2)}`;
 }
 
 export default function NewPurchasePage() {
   const nextItemIdRef = useRef(2);
+  const [openSkuItemId, setOpenSkuItemId] = useState<string | null>(null);
+  const ignoreNextSkuBlurRef = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [purchaseDate, setPurchaseDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
-  const [transportCost, setTransportCost] = useState(0);
-  const [otherCost, setOtherCost] = useState(0);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<PurchaseItemForm[]>([
     createItem("item-1"),
@@ -288,7 +245,6 @@ export default function NewPurchasePage() {
     (total, item) => total + item.qty * item.costPerUnit,
     0,
   );
-  const grandTotal = subtotal + transportCost + otherCost;
 
   function updateItem(id: string, patch: Partial<PurchaseItemForm>) {
     setItems((current) =>
@@ -415,26 +371,14 @@ export default function NewPurchasePage() {
         color: matchedVariant.color,
         qty: item.qty,
         costPerUnit: item.costPerUnit,
-        additionalCost: 0,
         total: item.qty * item.costPerUnit,
       });
     }
 
-    const additionalCosts = allocateAdditionalCosts(
-      resolvedItems,
-      transportCost + otherCost,
-    );
-
     const payload: PurchasePayload = {
       purchaseDate,
-      transportCost,
-      otherCost,
       subtotal,
-      grandTotal,
-      items: resolvedItems.map((item, index) => ({
-        ...item,
-        additionalCost: additionalCosts[index] ?? 0,
-      })),
+      items: resolvedItems,
     };
 
     setIsSubmitting(true);
@@ -455,7 +399,7 @@ export default function NewPurchasePage() {
             variantId: item.variantId,
             qty: item.qty,
             costPerUnit: item.costPerUnit,
-            additionalCost: item.additionalCost,
+            additionalCost: 0,
             purchaseDate,
             note: [`Supplier: ${item.supplier}`, batchNote]
               .filter(Boolean)
@@ -473,12 +417,10 @@ export default function NewPurchasePage() {
       }
 
       setSuccess(
-        `Saved ${payload.items.length} item${payload.items.length === 1 ? "" : "s"} — grand total ${currency(payload.grandTotal)}.`,
+        `Saved ${payload.items.length} item${payload.items.length === 1 ? "" : "s"} — subtotal ${currency(payload.subtotal)}.`,
       );
       nextItemIdRef.current = 2;
       setItems([createItem("item-1")]);
-      setTransportCost(0);
-      setOtherCost(0);
       setNotes("");
       await loadHistory();
     } catch {
@@ -537,9 +479,15 @@ export default function NewPurchasePage() {
           {items.map((item, index) => {
             const matchedVariant = getMatchingVariant(item);
             const rowVariants = getProductVariants(item.productId);
-            const skuOptions = Array.from(
-              new Set(variants.map((variant) => variant.sku)),
-            ).sort((left, right) => left.localeCompare(right));
+            const skuDropdownVariants = item.sku
+              ? variants
+                  .filter((variant) =>
+                    variant.sku
+                      .toLocaleLowerCase()
+                      .includes(item.sku.toLocaleLowerCase()),
+                  )
+                  .slice(0, 40)
+              : variants.slice(0, 40);
             const sizeOptions = Array.from(
               new Set(rowVariants.map((variant) => variant.size)),
             );
@@ -576,24 +524,49 @@ export default function NewPurchasePage() {
                 </div>
 
                 {/* SKU + Product */}
-                <div className="mt-3">
-                  <label className="grid gap-1.5 text-sm font-medium text-foreground">
-                    SKU
-                    <input
-                      className="field"
-                      list={`sku-options-${item.id}`}
-                      placeholder="Type or pick an SKU"
-                      value={item.sku}
-                      onChange={(event) =>
-                        updateItemSku(item.id, event.target.value)
+                <div className="relative mt-3 grid gap-1.5 text-sm font-medium text-foreground">
+                  SKU
+                  <input
+                    className="field"
+                    placeholder="Type or pick an SKU"
+                    value={item.sku}
+                    onBlur={() => {
+                      if (ignoreNextSkuBlurRef.current) {
+                        ignoreNextSkuBlurRef.current = false;
+                        return;
                       }
-                    />
-                    <datalist id={`sku-options-${item.id}`}>
-                      {skuOptions.map((sku) => (
-                        <option key={sku} value={sku} />
+                      window.setTimeout(() => setOpenSkuItemId(null), 120);
+                    }}
+                    onChange={(event) => {
+                      updateItemSku(item.id, event.target.value);
+                      setOpenSkuItemId(item.id);
+                    }}
+                    onFocus={() => setOpenSkuItemId(item.id)}
+                  />
+                  {openSkuItemId === item.id &&
+                  skuDropdownVariants.length > 0 ? (
+                    <div className="absolute top-full z-10 mt-1 grid max-h-64 w-full gap-1 overflow-y-auto rounded-[1.2rem] border border-(--stroke-soft) bg-white p-2 shadow-lg">
+                      {skuDropdownVariants.map((variant) => (
+                        <button
+                          key={variant.id}
+                          className="rounded-xl px-3 py-2 text-left text-sm text-foreground hover:bg-(--surface-accent-soft)"
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            ignoreNextSkuBlurRef.current = true;
+                            updateItemSku(item.id, variant.sku);
+                            setOpenSkuItemId(null);
+                          }}
+                          type="button"
+                        >
+                          <span className="font-medium">{variant.sku}</span>
+                          <span className="ml-2 text-(--text-secondary)">
+                            {getProductName(variant.productId)} ·{" "}
+                            {variant.color} · {variant.size}
+                          </span>
+                        </button>
                       ))}
-                    </datalist>
-                  </label>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-3">
@@ -719,7 +692,7 @@ export default function NewPurchasePage() {
                       className="field"
                       min={0}
                       placeholder="0"
-                      step="0.01"
+                      step="1"
                       type="number"
                       value={item.costPerUnit === 0 ? "" : item.costPerUnit}
                       onChange={(event) =>
@@ -793,14 +766,14 @@ export default function NewPurchasePage() {
         </button>
       </div>
 
-      {/* Step 3 — Costs & Submit */}
+      {/* Step 3 — Notes & Submit */}
       <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
         <div className="flex items-center gap-3">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-accent) text-xs font-bold text-(--text-inverse)">
             3
           </span>
           <h2 className="text-lg font-semibold tracking-tight">
-            Costs &amp; submit
+            Notes &amp; submit
           </h2>
         </div>
 
@@ -814,38 +787,6 @@ export default function NewPurchasePage() {
             <span className="font-semibold text-foreground">
               {currency(subtotal)}
             </span>
-          </div>
-
-          {/* Additional costs */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              Transport cost
-              <input
-                className="field"
-                min={0}
-                placeholder="0"
-                step="0.01"
-                type="number"
-                value={transportCost === 0 ? "" : transportCost}
-                onChange={(event) =>
-                  setTransportCost(Math.max(Number(event.target.value) || 0, 0))
-                }
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              Other cost
-              <input
-                className="field"
-                min={0}
-                placeholder="0"
-                step="0.01"
-                type="number"
-                value={otherCost === 0 ? "" : otherCost}
-                onChange={(event) =>
-                  setOtherCost(Math.max(Number(event.target.value) || 0, 0))
-                }
-              />
-            </label>
           </div>
 
           <label className="grid gap-1.5 text-sm font-medium text-foreground">
@@ -862,16 +803,6 @@ export default function NewPurchasePage() {
               onChange={(event) => setNotes(event.target.value)}
             />
           </label>
-
-          {/* Grand total */}
-          <div className="flex items-center justify-between rounded-[1.4rem] bg-(--surface-accent) px-5 py-4">
-            <span className="font-semibold text-(--text-inverse)">
-              Grand total
-            </span>
-            <span className="text-2xl font-bold text-(--text-inverse)">
-              {currency(grandTotal)}
-            </span>
-          </div>
 
           {/* Submit button */}
           <button
@@ -983,7 +914,7 @@ export default function NewPurchasePage() {
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-foreground">
-                    {currency(record.cashOutTotal)}
+                    {currency(record.totalCost)}
                   </p>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-(--text-secondary)">
@@ -994,7 +925,7 @@ export default function NewPurchasePage() {
                   <p className="text-right">Qty: {record.qty}</p>
                   <p>Cost: {currency(record.costPerUnit)}</p>
                   <p className="text-right">
-                    Extra: {currency(record.additionalCost)}
+                    Subtotal: {currency(record.totalCost)}
                   </p>
                 </div>
                 {(record.note ?? "").trim() ? (
@@ -1008,7 +939,7 @@ export default function NewPurchasePage() {
         </div>
 
         <div className="mt-4 hidden overflow-x-auto rounded-[1.2rem] ring-1 ring-(--stroke-soft) md:block">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-225 text-sm">
             <thead className="bg-(--surface-accent-soft)">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Date</th>
@@ -1019,8 +950,7 @@ export default function NewPurchasePage() {
                 </th>
                 <th className="px-3 py-2 text-right font-semibold">Qty</th>
                 <th className="px-3 py-2 text-right font-semibold">Cost</th>
-                <th className="px-3 py-2 text-right font-semibold">Extra</th>
-                <th className="px-3 py-2 text-right font-semibold">Cash out</th>
+                <th className="px-3 py-2 text-right font-semibold">Subtotal</th>
                 <th className="px-3 py-2 text-left font-semibold">Note</th>
               </tr>
             </thead>
@@ -1029,7 +959,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={9}
+                    colSpan={8}
                   >
                     Loading purchase history...
                   </td>
@@ -1038,7 +968,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={9}
+                    colSpan={8}
                   >
                     No purchases found for the selected filters.
                   </td>
@@ -1064,10 +994,7 @@ export default function NewPurchasePage() {
                       {currency(record.costPerUnit)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {currency(record.additionalCost)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {currency(record.cashOutTotal)}
+                      {currency(record.totalCost)}
                     </td>
                     <td className="px-3 py-2 text-xs text-(--text-secondary)">
                       {(record.note ?? "").trim() || "-"}

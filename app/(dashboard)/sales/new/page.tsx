@@ -576,7 +576,7 @@ export default function NewSalePage() {
                   className="field text-foreground"
                   min={0}
                   max={maxReduceAmount}
-                  step="0.01"
+                  step="1"
                   type="number"
                   value={reduceAmount === 0 ? "" : reduceAmount}
                   onChange={(event) =>

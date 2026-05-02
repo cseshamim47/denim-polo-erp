@@ -281,7 +281,7 @@ export default function InvestmentsPage() {
                 }
                 placeholder="Enter amount"
                 required
-                step="0.01"
+                step="1"
                 type="number"
                 value={investmentForm.amount}
               />
