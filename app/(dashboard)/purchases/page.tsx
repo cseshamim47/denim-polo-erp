@@ -84,6 +84,13 @@ type PurchaseHistoryRecord = {
   }>;
 };
 
+type PurchasePagination = {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 type PurchasePayload = {
   purchaseDate: string;
   subtotal: number;
@@ -197,6 +204,13 @@ export default function NewPurchasePage() {
   const [purchaseHistory, setPurchaseHistory] = useState<
     PurchaseHistoryRecord[]
   >([]);
+  const [historyPagination, setHistoryPagination] =
+    useState<PurchasePagination>({
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
@@ -232,6 +246,7 @@ export default function NewPurchasePage() {
         }>(variantsResponse);
         const purchasesPayload = await readJsonResponse<{
           purchases?: PurchaseHistoryRecord[];
+          pagination?: PurchasePagination;
         }>(purchasesResponse);
 
         if (
@@ -246,6 +261,14 @@ export default function NewPurchasePage() {
         setProducts(productsPayload?.products ?? []);
         setVariants(variantsPayload?.variants ?? []);
         setPurchaseHistory(purchasesPayload?.purchases ?? []);
+        setHistoryPagination(
+          purchasesPayload?.pagination ?? {
+            total: purchasesPayload?.purchases?.length ?? 0,
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+          },
+        );
       } catch {
         setError("Unable to load purchase catalog right now.");
       } finally {
@@ -260,6 +283,7 @@ export default function NewPurchasePage() {
     search?: string;
     from?: string;
     to?: string;
+    page?: number;
   }) {
     setIsHistoryLoading(true);
 
@@ -268,6 +292,7 @@ export default function NewPurchasePage() {
       const activeSearch = filters?.search ?? historySearch;
       const activeFrom = filters?.from ?? historyFromDate;
       const activeTo = filters?.to ?? historyToDate;
+      const activePage = filters?.page ?? historyPagination.page;
 
       if (activeSearch.trim()) {
         params.set("search", activeSearch.trim());
@@ -278,12 +303,15 @@ export default function NewPurchasePage() {
       if (activeTo) {
         params.set("to", activeTo);
       }
+      params.set("page", String(activePage));
+      params.set("pageSize", String(historyPagination.pageSize));
 
       const response = await fetch(`/api/purchases?${params.toString()}`, {
         cache: "no-store",
       });
       const payload = await readJsonResponse<{
         purchases?: PurchaseHistoryRecord[];
+        pagination?: PurchasePagination;
       }>(response);
 
       if (!response.ok) {
@@ -292,6 +320,14 @@ export default function NewPurchasePage() {
       }
 
       setPurchaseHistory(payload?.purchases ?? []);
+      setHistoryPagination(
+        payload?.pagination ?? {
+          total: payload?.purchases?.length ?? 0,
+          page: activePage,
+          pageSize: historyPagination.pageSize,
+          totalPages: 1,
+        },
+      );
     } catch {
       setError("Unable to load purchase history right now.");
     } finally {
@@ -480,7 +516,7 @@ export default function NewPurchasePage() {
       nextItemIdRef.current = 2;
       setItems([createItem("item-1")]);
       setNotes("");
-      await loadHistory();
+      await loadHistory({ page: 1 });
     } catch {
       setError("Purchase save failed. Please try again.");
     } finally {
@@ -508,6 +544,18 @@ export default function NewPurchasePage() {
     setSuccess(`Purchase ${decision}.`);
     await loadHistory();
   }
+
+  const historyStart =
+    historyPagination.total === 0
+      ? 0
+      : (historyPagination.page - 1) * historyPagination.pageSize + 1;
+  const historyEnd =
+    historyPagination.total === 0
+      ? 0
+      : Math.min(
+          historyPagination.total,
+          historyPagination.page * historyPagination.pageSize,
+        );
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -1086,7 +1134,7 @@ export default function NewPurchasePage() {
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
             <button
               className="btn-primary w-full"
-              onClick={() => void loadHistory()}
+              onClick={() => void loadHistory({ page: 1 })}
               type="button"
             >
               Apply filter
@@ -1097,7 +1145,7 @@ export default function NewPurchasePage() {
                 setHistorySearch("");
                 setHistoryFromDate("");
                 setHistoryToDate("");
-                void loadHistory({ search: "", from: "", to: "" });
+                void loadHistory({ search: "", from: "", to: "", page: 1 });
               }}
               type="button"
             >
@@ -1376,6 +1424,49 @@ export default function NewPurchasePage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] bg-(--surface-accent-soft) px-4 py-3 text-sm">
+          <p className="text-(--text-secondary)">
+            Showing {historyStart}-{historyEnd} of {historyPagination.total}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isHistoryLoading || historyPagination.page <= 1}
+              onClick={() =>
+                void loadHistory({
+                  page: Math.max(1, historyPagination.page - 1),
+                })
+              }
+              type="button"
+            >
+              Previous
+            </Button>
+            <span className="text-xs text-(--text-secondary)">
+              Page {historyPagination.page} of {historyPagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                isHistoryLoading ||
+                historyPagination.page >= historyPagination.totalPages
+              }
+              onClick={() =>
+                void loadHistory({
+                  page: Math.min(
+                    historyPagination.totalPages,
+                    historyPagination.page + 1,
+                  ),
+                })
+              }
+              type="button"
+            >
+              Next
+            </Button>
+          </div>
         </div>
       </div>
     </div>

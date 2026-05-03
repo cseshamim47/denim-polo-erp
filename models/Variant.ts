@@ -90,7 +90,7 @@ const variantSchema = new Schema<Variant>(
       required: true,
       index: true,
     },
-    color: { type: String, required: true, trim: true, uppercase: true },
+    color: { type: String, required: false, trim: true, uppercase: true, default: "" },
     size: { type: String, required: true, trim: true, uppercase: true },
     sku: {
       type: String,

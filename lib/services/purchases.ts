@@ -43,6 +43,14 @@ export type PurchaseHistoryRecord = {
   }>;
 };
 
+export type PurchaseHistoryPage = {
+  items: PurchaseHistoryRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 function toApprovals(
   approvals:
     | Array<{
@@ -201,9 +209,17 @@ export async function listPurchases(input?: {
   search?: string;
   from?: Date;
   to?: Date;
-  limit?: number;
-}): Promise<PurchaseHistoryRecord[]> {
+  page?: number;
+  pageSize?: number;
+}): Promise<PurchaseHistoryPage> {
   await connectToDatabase();
+
+  const requestedPage = Number.isFinite(input?.page)
+    ? Math.max(1, Math.trunc(input?.page ?? 1))
+    : 1;
+  const requestedPageSize = Number.isFinite(input?.pageSize)
+    ? Math.max(1, Math.min(100, Math.trunc(input?.pageSize ?? 20)))
+    : 20;
 
   const query: Record<string, unknown> = {};
 
@@ -216,11 +232,16 @@ export async function listPurchases(input?: {
 
   const purchases = await PurchaseModel.find(query)
     .sort({ purchaseDate: -1, createdAt: -1 })
-    .limit(input?.limit ?? 200)
     .lean();
 
   if (purchases.length === 0) {
-    return [];
+    return {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: requestedPageSize,
+      totalPages: 1,
+    };
   }
 
   const variantIds = Array.from(
@@ -247,7 +268,9 @@ export async function listPurchases(input?: {
       ),
     ),
   );
-  const partnerIds = Array.from(new Set([...creatorIds, ...approvalPartnerIds]));
+  const partnerIds = Array.from(
+    new Set([...creatorIds, ...approvalPartnerIds]),
+  );
 
   const [products, partners] = await Promise.all([
     ProductModel.find({ _id: { $in: productIds } })
@@ -304,7 +327,8 @@ export async function listPurchases(input?: {
       approvals: approvals.map((approval) => ({
         partnerId: approval.partnerId.toString(),
         partnerName:
-          partnerNameById.get(approval.partnerId.toString()) ?? "Unknown partner",
+          partnerNameById.get(approval.partnerId.toString()) ??
+          "Unknown partner",
         decision: approval.decision,
         comment: approval.comment ?? null,
         decidedAt: approval.decidedAt.toISOString(),
@@ -314,17 +338,32 @@ export async function listPurchases(input?: {
 
   const normalizedSearch = input?.search?.trim().toLocaleLowerCase();
 
-  if (!normalizedSearch) {
-    return records;
-  }
+  const filteredRecords = !normalizedSearch
+    ? records
+    : records.filter((record) => {
+        return (
+          record.sku.toLocaleLowerCase().includes(normalizedSearch) ||
+          record.productName.toLocaleLowerCase().includes(normalizedSearch) ||
+          record.size.toLocaleLowerCase().includes(normalizedSearch) ||
+          record.color.toLocaleLowerCase().includes(normalizedSearch) ||
+          (record.note ?? "").toLocaleLowerCase().includes(normalizedSearch)
+        );
+      });
 
-  return records.filter((record) => {
-    return (
-      record.sku.toLocaleLowerCase().includes(normalizedSearch) ||
-      record.productName.toLocaleLowerCase().includes(normalizedSearch) ||
-      record.size.toLocaleLowerCase().includes(normalizedSearch) ||
-      record.color.toLocaleLowerCase().includes(normalizedSearch) ||
-      (record.note ?? "").toLocaleLowerCase().includes(normalizedSearch)
-    );
-  });
+  const total = filteredRecords.length;
+  const totalPages = Math.max(1, Math.ceil(total / requestedPageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const startIndex = (page - 1) * requestedPageSize;
+  const items = filteredRecords.slice(
+    startIndex,
+    startIndex + requestedPageSize,
+  );
+
+  return {
+    items,
+    total,
+    page,
+    pageSize: requestedPageSize,
+    totalPages,
+  };
 }

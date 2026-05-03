@@ -35,16 +35,31 @@ export async function GET(request: Request) {
   const search = url.searchParams.get("search") ?? "";
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
+  const page = Number(url.searchParams.get("page") ?? "1");
+  const pageSize = Number(url.searchParams.get("pageSize") ?? "20");
 
   try {
-    const purchases = await listPurchases({
+    const result = await listPurchases({
       actorId: session.user.id,
       search,
       from: from ? new Date(`${from}T00:00:00.000Z`) : undefined,
       to: to ? new Date(`${to}T23:59:59.999Z`) : undefined,
+      page,
+      pageSize,
     });
 
-    return NextResponse.json({ purchases }, { status: 200 });
+    return NextResponse.json(
+      {
+        purchases: result.items,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+        },
+      },
+      { status: 200 },
+    );
   } catch {
     return NextResponse.json(
       { error: "Unable to load purchases" },

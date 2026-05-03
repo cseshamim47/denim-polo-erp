@@ -80,6 +80,7 @@ type Product = {
   name: string;
   category: string;
   description?: string | null;
+  stockQty?: number;
   deleteRequest?: DeleteRequest;
 };
 
@@ -102,6 +103,13 @@ type FieldErrors = {
   color?: string;
   sizes?: string;
   sellingPrice?: string;
+};
+
+type PaginationMeta = {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };
 
 function currency(value: number) {
@@ -168,6 +176,20 @@ function getRequestBadgeClassName(
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [catalogVariants, setCatalogVariants] = useState<Variant[]>([]);
+  const [productPagination, setProductPagination] = useState<PaginationMeta>({
+    total: 0,
+    page: 1,
+    pageSize: PRODUCTS_PER_PAGE,
+    totalPages: 1,
+  });
+  const [variantPagination, setVariantPagination] = useState<PaginationMeta>({
+    total: 0,
+    page: 1,
+    pageSize: PRODUCTS_PER_PAGE,
+    totalPages: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [openField, setOpenField] = useState<string | null>(null);
 
@@ -282,124 +304,83 @@ export default function ProductsPage() {
     [products],
   );
 
-  const filteredProducts = useMemo(() => {
-    const normalizedQuery = productFilterText.trim().toLocaleLowerCase();
+  const paginatedProducts = catalogProducts;
+  const paginatedVariants = catalogVariants;
+  const totalProductPages = productPagination.totalPages;
+  const currentProductPage = productPagination.page;
+  const totalVariantPages = variantPagination.totalPages;
+  const currentVariantPage = variantPagination.page;
 
-    return products.filter((product) => {
-      const stock = productStockById.get(product.id) ?? 0;
-      const deleteStatus = product.deleteRequest?.status ?? "none";
-
-      if (
-        productFilterCategory !== "all" &&
-        product.category !== productFilterCategory
-      ) {
-        return false;
-      }
-      if (productFilterStock === "in-stock" && stock <= 0) {
-        return false;
-      }
-      if (productFilterStock === "zero-stock" && stock > 0) {
-        return false;
-      }
-      if (
-        productFilterDeleteStatus !== "all" &&
-        deleteStatus !== productFilterDeleteStatus
-      ) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const description = product.description ?? "";
-      return (
-        product.name.toLocaleLowerCase().includes(normalizedQuery) ||
-        product.category.toLocaleLowerCase().includes(normalizedQuery) ||
-        description.toLocaleLowerCase().includes(normalizedQuery)
-      );
+  async function loadCatalogRecords() {
+    const productParams = new URLSearchParams({
+      page: String(productPage),
+      pageSize: String(PRODUCTS_PER_PAGE),
+      search: productFilterText,
+      stock: productFilterStock,
+      deleteStatus: productFilterDeleteStatus,
     });
-  }, [
-    productFilterCategory,
-    productFilterDeleteStatus,
-    productFilterStock,
-    productFilterText,
-    productStockById,
-    products,
-  ]);
 
-  const filteredVariants = useMemo(() => {
-    const normalizedQuery = variantFilterText.trim().toLocaleLowerCase();
+    if (productFilterCategory !== "all") {
+      productParams.set("category", productFilterCategory);
+    }
 
-    return variants.filter((variant) => {
-      const deleteStatus = variant.deleteRequest?.status ?? "none";
-
-      if (
-        variantFilterProductId !== "all" &&
-        variant.productId !== variantFilterProductId
-      ) {
-        return false;
-      }
-      if (variantFilterStock === "in-stock" && variant.stockQty <= 0) {
-        return false;
-      }
-      if (variantFilterStock === "zero-stock" && variant.stockQty > 0) {
-        return false;
-      }
-      if (
-        variantFilterDeleteStatus !== "all" &&
-        deleteStatus !== variantFilterDeleteStatus
-      ) {
-        return false;
-      }
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const productName = productNameById.get(variant.productId) ?? "";
-      return (
-        variant.sku.toLocaleLowerCase().includes(normalizedQuery) ||
-        variant.color.toLocaleLowerCase().includes(normalizedQuery) ||
-        variant.size.toLocaleLowerCase().includes(normalizedQuery) ||
-        productName.toLocaleLowerCase().includes(normalizedQuery)
-      );
+    const variantParams = new URLSearchParams({
+      page: String(variantPage),
+      pageSize: String(PRODUCTS_PER_PAGE),
+      search: variantFilterText,
+      stock: variantFilterStock,
+      deleteStatus: variantFilterDeleteStatus,
     });
-  }, [
-    productNameById,
-    variantFilterDeleteStatus,
-    variantFilterProductId,
-    variantFilterStock,
-    variantFilterText,
-    variants,
-  ]);
 
-  const totalProductPages = Math.max(
-    Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE),
-    1,
-  );
-  const currentProductPage = Math.min(productPage, totalProductPages);
+    if (variantFilterProductId !== "all") {
+      variantParams.set("productId", variantFilterProductId);
+    }
 
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (currentProductPage - 1) * PRODUCTS_PER_PAGE;
-    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
-  }, [currentProductPage, filteredProducts]);
+    const [productsResponse, variantsResponse] = await Promise.all([
+      fetch(`/api/products?${productParams.toString()}`, { cache: "no-store" }),
+      fetch(`/api/variants?${variantParams.toString()}`, { cache: "no-store" }),
+    ]);
 
-  const totalVariantPages = Math.max(
-    Math.ceil(filteredVariants.length / PRODUCTS_PER_PAGE),
-    1,
-  );
-  const currentVariantPage = Math.min(variantPage, totalVariantPages);
+    if (!productsResponse.ok || !variantsResponse.ok) {
+      toast.error("Unable to load catalog records right now.");
+      return;
+    }
 
-  const paginatedVariants = useMemo(() => {
-    const startIndex = (currentVariantPage - 1) * PRODUCTS_PER_PAGE;
-    return filteredVariants.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
-  }, [currentVariantPage, filteredVariants]);
+    const productsPayload = await readJsonResponse<{
+      products?: Product[];
+      pagination?: PaginationMeta;
+    }>(productsResponse);
+    const variantsPayload = await readJsonResponse<{
+      variants?: Variant[];
+      pagination?: PaginationMeta;
+    }>(variantsResponse);
+
+    setCatalogProducts(productsPayload?.products ?? []);
+    setCatalogVariants(variantsPayload?.variants ?? []);
+    setProductPagination(
+      productsPayload?.pagination ?? {
+        total: productsPayload?.products?.length ?? 0,
+        page: 1,
+        pageSize: PRODUCTS_PER_PAGE,
+        totalPages: 1,
+      },
+    );
+    setVariantPagination(
+      variantsPayload?.pagination ?? {
+        total: variantsPayload?.variants?.length ?? 0,
+        page: 1,
+        pageSize: PRODUCTS_PER_PAGE,
+        totalPages: 1,
+      },
+    );
+  }
 
   async function loadData() {
     setIsLoading(true);
 
     try {
       const [productsResponse, variantsResponse] = await Promise.all([
-        fetch("/api/products", { cache: "no-store" }),
+        fetch("/api/products?forOptions=1", { cache: "no-store" }),
         fetch("/api/variants?search=", { cache: "no-store" }),
       ]);
 
@@ -417,6 +398,7 @@ export default function ProductsPage() {
 
       setProducts(productsPayload?.products ?? []);
       setVariants(variantsPayload?.variants ?? []);
+      await loadCatalogRecords();
     } finally {
       setIsLoading(false);
     }
@@ -426,13 +408,14 @@ export default function ProductsPage() {
     let cancelled = false;
 
     Promise.all([
-      fetch("/api/products", { cache: "no-store" }),
+      fetch("/api/products?forOptions=1", { cache: "no-store" }),
       fetch("/api/variants?search=", { cache: "no-store" }),
     ])
       .then(async ([productsResponse, variantsResponse]) => {
         if (!productsResponse.ok || !variantsResponse.ok) {
           if (!cancelled) {
             toast.error("Unable to load products right now.");
+            setIsLoading(false);
           }
           return;
         }
@@ -462,6 +445,97 @@ export default function ProductsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const productParams = new URLSearchParams({
+      page: String(productPage),
+      pageSize: String(PRODUCTS_PER_PAGE),
+      search: productFilterText,
+      stock: productFilterStock,
+      deleteStatus: productFilterDeleteStatus,
+    });
+
+    if (productFilterCategory !== "all") {
+      productParams.set("category", productFilterCategory);
+    }
+
+    const variantParams = new URLSearchParams({
+      page: String(variantPage),
+      pageSize: String(PRODUCTS_PER_PAGE),
+      search: variantFilterText,
+      stock: variantFilterStock,
+      deleteStatus: variantFilterDeleteStatus,
+    });
+
+    if (variantFilterProductId !== "all") {
+      variantParams.set("productId", variantFilterProductId);
+    }
+
+    Promise.all([
+      fetch(`/api/products?${productParams.toString()}`, { cache: "no-store" }),
+      fetch(`/api/variants?${variantParams.toString()}`, { cache: "no-store" }),
+    ])
+      .then(async ([productsResponse, variantsResponse]) => {
+        if (!productsResponse.ok || !variantsResponse.ok) {
+          if (!cancelled) {
+            toast.error("Unable to load catalog records right now.");
+          }
+          return;
+        }
+
+        const productsPayload = await readJsonResponse<{
+          products?: Product[];
+          pagination?: PaginationMeta;
+        }>(productsResponse);
+        const variantsPayload = await readJsonResponse<{
+          variants?: Variant[];
+          pagination?: PaginationMeta;
+        }>(variantsResponse);
+
+        if (!cancelled) {
+          setCatalogProducts(productsPayload?.products ?? []);
+          setCatalogVariants(variantsPayload?.variants ?? []);
+          setProductPagination(
+            productsPayload?.pagination ?? {
+              total: productsPayload?.products?.length ?? 0,
+              page: 1,
+              pageSize: PRODUCTS_PER_PAGE,
+              totalPages: 1,
+            },
+          );
+          setVariantPagination(
+            variantsPayload?.pagination ?? {
+              total: variantsPayload?.variants?.length ?? 0,
+              page: 1,
+              pageSize: PRODUCTS_PER_PAGE,
+              totalPages: 1,
+            },
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toast.error("Unable to load catalog records right now.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    productPage,
+    variantPage,
+    productFilterText,
+    productFilterCategory,
+    productFilterStock,
+    productFilterDeleteStatus,
+    variantFilterText,
+    variantFilterProductId,
+    variantFilterStock,
+    variantFilterDeleteStatus,
+  ]);
+
   function validateProductForm() {
     const nextErrors: FieldErrors = {};
 
@@ -480,9 +554,6 @@ export default function ProductsPage() {
 
     if (!variantForm.productId.trim()) {
       nextErrors.productId = "This field is required.";
-    }
-    if (!variantForm.color.trim()) {
-      nextErrors.color = "This field is required.";
     }
     if (normalizeSizes(variantForm.sizesText).length === 0) {
       nextErrors.sizes = "Provide at least one size.";
@@ -753,32 +824,43 @@ export default function ProductsPage() {
   }
 
   const productStartIndex =
-    filteredProducts.length === 0
+    productPagination.total === 0
       ? 0
-      : (currentProductPage - 1) * PRODUCTS_PER_PAGE + 1;
+      : (currentProductPage - 1) * productPagination.pageSize + 1;
   const productEndIndex =
-    filteredProducts.length === 0
+    productPagination.total === 0
       ? 0
       : Math.min(
-          currentProductPage * PRODUCTS_PER_PAGE,
-          filteredProducts.length,
+          currentProductPage * productPagination.pageSize,
+          productPagination.total,
+        );
+  const variantStartIndex =
+    variantPagination.total === 0
+      ? 0
+      : (currentVariantPage - 1) * variantPagination.pageSize + 1;
+  const variantEndIndex =
+    variantPagination.total === 0
+      ? 0
+      : Math.min(
+          currentVariantPage * variantPagination.pageSize,
+          variantPagination.total,
         );
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-[var(--stroke-soft)]">
+      <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
         <h2 className="text-2xl font-semibold tracking-tight">
           Product catalog
         </h2>
-        <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
+        <p className="mt-3 text-sm leading-7 text-(--text-secondary)">
           Create products and add color variants with multiple sizes in one
           action.
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-[var(--stroke-soft)]">
-          <h3 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+        <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
+          <h3 className="text-xl font-semibold tracking-tight text-foreground">
             Create product
           </h3>
 
@@ -792,7 +874,7 @@ export default function ProductsPage() {
                 }
               }}
             >
-              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+              <label className="mb-1 block text-sm text-(--text-secondary)">
                 Product name
               </label>
               <PopoverTrigger asChild>
@@ -884,7 +966,7 @@ export default function ProductsPage() {
                 }
               }}
             >
-              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+              <label className="mb-1 block text-sm text-(--text-secondary)">
                 Category
               </label>
               <PopoverTrigger asChild>
@@ -970,7 +1052,7 @@ export default function ProductsPage() {
             </Popover>
 
             <div>
-              <label className="mb-1 block text-sm text-[var(--text-secondary)]">
+              <label className="mb-1 block text-sm text-(--text-secondary)">
                 Description
               </label>
               <textarea
@@ -996,7 +1078,7 @@ export default function ProductsPage() {
           </div>
         </section>
 
-        <section className="relative rounded-[1.8rem] bg-[var(--surface-accent)] p-6 text-white lg:mt-4">
+        <section className="relative rounded-[1.8rem] bg-(--surface-accent) p-6 text-white lg:mt-4">
           <h3 className="text-xl font-semibold tracking-tight">
             Create variant
           </h3>
@@ -1017,7 +1099,7 @@ export default function ProductsPage() {
             >
               <PopoverTrigger asChild>
                 <button
-                  className="field flex items-center justify-between text-[var(--text-primary)]"
+                  className="field flex items-center justify-between text-foreground"
                   type="button"
                 >
                   <span>
@@ -1088,7 +1170,7 @@ export default function ProductsPage() {
               <label className="mb-1 block text-sm text-white/80">Color</label>
               <PopoverTrigger asChild>
                 <button
-                  className="field flex items-center justify-between text-[var(--text-primary)]"
+                  className="field flex items-center justify-between text-foreground"
                   type="button"
                 >
                   <span>{variantForm.color.trim() || "Color"}</span>
@@ -1172,7 +1254,7 @@ export default function ProductsPage() {
                   Sizes (comma separated)
                 </label>
                 <input
-                  className="field text-[var(--text-primary)]"
+                  className="field text-foreground"
                   placeholder="S, M, L"
                   value={variantForm.sizesText}
                   onChange={(event) => {
@@ -1198,7 +1280,7 @@ export default function ProductsPage() {
                   Selling price
                 </label>
                 <input
-                  className="field text-[var(--text-primary)]"
+                  className="field text-foreground"
                   type="number"
                   min={0}
                   placeholder="Selling price"
@@ -1234,7 +1316,7 @@ export default function ProductsPage() {
         </section>
       </div>
 
-      <section className="relative space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-[var(--stroke-soft)] sm:p-6">
+      <section className="relative space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-(--stroke-soft) sm:p-6">
         {isLoading ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-white/70 backdrop-blur-[1px]">
             <Spinner label="Loading catalog records..." />
@@ -1250,8 +1332,8 @@ export default function ProductsPage() {
               <button
                 className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                   activeListTab === "products"
-                    ? "bg-[var(--surface-accent)] text-white"
-                    : "text-[var(--text-secondary)]"
+                    ? "bg-(--surface-accent) text-white"
+                    : "text-(--text-secondary)"
                 }`}
                 onClick={() => setActiveListTab("products")}
                 type="button"
@@ -1261,8 +1343,8 @@ export default function ProductsPage() {
               <button
                 className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
                   activeListTab === "variants"
-                    ? "bg-[var(--surface-accent)] text-white"
-                    : "text-[var(--text-secondary)]"
+                    ? "bg-(--surface-accent) text-white"
+                    : "text-(--text-secondary)"
                 }`}
                 onClick={() => setActiveListTab("variants")}
                 type="button"
@@ -1293,7 +1375,7 @@ export default function ProductsPage() {
         {activeListTab === "products" ? (
           <>
             {showProductFilters ? (
-              <div className="grid gap-3 rounded-2xl border border-[var(--stroke-soft)] p-4 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-2xl border border-(--stroke-soft) p-4 sm:grid-cols-2">
                 <input
                   className="field sm:col-span-2"
                   placeholder="Search by name, category, or description"
@@ -1475,8 +1557,8 @@ export default function ProductsPage() {
               </div>
             ) : null}
 
-            {filteredProducts.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-[var(--stroke-soft)] p-6 text-center text-sm text-[var(--text-secondary)]">
+            {productPagination.total === 0 ? (
+              <p className="rounded-2xl border border-dashed border-(--stroke-soft) p-6 text-center text-sm text-(--text-secondary)">
                 No products matched your filters.
               </p>
             ) : (
@@ -1491,38 +1573,38 @@ export default function ProductsPage() {
                     return (
                       <article
                         key={product.id}
-                        className="rounded-2xl border border-[var(--stroke-soft)] bg-white/90 p-4 shadow-sm"
+                        className="rounded-2xl border border-(--stroke-soft) bg-white/90 p-4 shadow-sm"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-base font-semibold text-[var(--text-primary)]">
+                            <p className="text-base font-semibold text-foreground">
                               {product.name}
                             </p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                            <p className="mt-1 text-xs uppercase tracking-[0.08em] text-(--text-secondary)">
                               {product.category}
                             </p>
                           </div>
-                          <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+                          <span className="rounded-full bg-(--surface-accent-soft) px-2 py-1 text-xs font-semibold text-(--text-secondary)">
                             Stock {stock}
                           </span>
                         </div>
 
-                        <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                        <p className="mt-3 text-sm leading-6 text-(--text-secondary)">
                           {product.description?.trim() || "No description"}
                         </p>
 
                         <div className="mt-3">
                           {deleteRequest?.status &&
                           deleteRequest.status !== "none" ? (
-                            <div className="inline-block rounded-full bg-[var(--surface-accent-soft)] px-2 py-1">
-                              <span className="text-xs uppercase tracking-[0.1em] font-semibold text-[var(--text-secondary)]">
+                            <div className="inline-block rounded-full bg-(--surface-accent-soft) px-2 py-1">
+                              <span className="text-xs uppercase tracking-widest font-semibold text-(--text-secondary)">
                                 {deleteRequest.status} (
                                 {deleteRequest.approvalCount}/
                                 {deleteRequest.requiredApprovalCount})
                               </span>
                             </div>
                           ) : (
-                            <span className="text-xs text-[var(--text-secondary)]">
+                            <span className="text-xs text-(--text-secondary)">
                               No request
                             </span>
                           )}
@@ -1571,7 +1653,7 @@ export default function ProductsPage() {
                               </button>
                             </>
                           ) : (
-                            <span className="text-xs text-[var(--text-secondary)]">
+                            <span className="text-xs text-(--text-secondary)">
                               Pending
                             </span>
                           )}
@@ -1626,7 +1708,7 @@ export default function ProductsPage() {
                               className="max-w-xs truncate text-(--text-secondary)"
                               title={product.description?.trim()}
                             >
-                              {product.description?.trim() || "—"}
+                              {product.description?.trim() || "â€”"}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge
@@ -1651,7 +1733,7 @@ export default function ProductsPage() {
                                 </Badge>
                               ) : (
                                 <span className="text-xs text-(--text-secondary)">
-                                  —
+                                  â€”
                                 </span>
                               )}
                             </TableCell>
@@ -1714,11 +1796,11 @@ export default function ProductsPage() {
               </>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--stroke-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--stroke-soft) px-4 py-3 text-sm text-(--text-secondary)">
               <p>
-                {filteredProducts.length === 0
+                {productPagination.total === 0
                   ? "No products"
-                  : `Showing ${productStartIndex}-${productEndIndex} of ${filteredProducts.length}`}
+                  : `Showing ${productStartIndex}-${productEndIndex} of ${productPagination.total}`}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -1752,7 +1834,7 @@ export default function ProductsPage() {
         ) : (
           <div className="space-y-4">
             {showVariantFilters ? (
-              <div className="grid gap-3 rounded-2xl border border-[var(--stroke-soft)] p-4 sm:grid-cols-2">
+              <div className="grid gap-3 rounded-2xl border border-(--stroke-soft) p-4 sm:grid-cols-2">
                 <input
                   className="field sm:col-span-2"
                   placeholder="Search by SKU, product, color, or size"
@@ -1937,8 +2019,8 @@ export default function ProductsPage() {
               </div>
             ) : null}
 
-            {filteredVariants.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-[var(--stroke-soft)] p-6 text-center text-sm text-[var(--text-secondary)]">
+            {variantPagination.total === 0 ? (
+              <p className="rounded-2xl border border-dashed border-(--stroke-soft) p-6 text-center text-sm text-(--text-secondary)">
                 No live variants matched your filters.
               </p>
             ) : (
@@ -1960,38 +2042,38 @@ export default function ProductsPage() {
                     return (
                       <article
                         key={variant.id}
-                        className="rounded-2xl border border-[var(--stroke-soft)] bg-white/90 p-4 shadow-sm"
+                        className="rounded-2xl border border-(--stroke-soft) bg-white/90 p-4 shadow-sm"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-semibold text-[var(--text-primary)]">
+                            <p className="text-sm font-semibold text-foreground">
                               {variant.sku}
                             </p>
-                            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                            <p className="mt-1 text-xs text-(--text-secondary)">
                               {productName}
                             </p>
                           </div>
-                          <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+                          <span className="rounded-full bg-(--surface-accent-soft) px-2 py-1 text-xs font-semibold text-(--text-secondary)">
                             Stock {variant.stockQty}
                           </span>
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                          <p className="text-[var(--text-secondary)]">
+                          <p className="text-(--text-secondary)">
                             Color:{" "}
-                            <span className="font-medium text-[var(--text-primary)]">
+                            <span className="font-medium text-foreground">
                               {variant.color}
                             </span>
                           </p>
-                          <p className="text-[var(--text-secondary)]">
+                          <p className="text-(--text-secondary)">
                             Size:{" "}
-                            <span className="font-medium text-[var(--text-primary)]">
+                            <span className="font-medium text-foreground">
                               {variant.size}
                             </span>
                           </p>
-                          <p className="col-span-2 text-[var(--text-secondary)]">
+                          <p className="col-span-2 text-(--text-secondary)">
                             Price:{" "}
-                            <span className="font-semibold text-[var(--text-primary)]">
+                            <span className="font-semibold text-foreground">
                               {currency(variant.sellingPrice)}
                             </span>
                           </p>
@@ -2000,7 +2082,7 @@ export default function ProductsPage() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           {updateRequest?.status &&
                           updateRequest.status !== "none" ? (
-                            <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                            <span className="rounded-full bg-(--surface-accent-soft) px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-(--text-secondary)">
                               update {updateRequest.status} (
                               {updateRequest.approvalCount}/
                               {updateRequest.requiredApprovalCount})
@@ -2008,7 +2090,7 @@ export default function ProductsPage() {
                           ) : null}
                           {deleteRequest?.status &&
                           deleteRequest.status !== "none" ? (
-                            <span className="rounded-full bg-[var(--surface-accent-soft)] px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                            <span className="rounded-full bg-(--surface-accent-soft) px-2 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-(--text-secondary)">
                               delete {deleteRequest.status} (
                               {deleteRequest.approvalCount}/
                               {deleteRequest.requiredApprovalCount})
@@ -2018,7 +2100,7 @@ export default function ProductsPage() {
                             updateRequest.status === "none") &&
                           (!deleteRequest?.status ||
                             deleteRequest.status === "none") ? (
-                            <span className="text-xs text-[var(--text-secondary)]">
+                            <span className="text-xs text-(--text-secondary)">
                               No request
                             </span>
                           ) : null}
@@ -2054,7 +2136,7 @@ export default function ProductsPage() {
                                 </button>
                               </>
                             ) : (
-                              <span className="text-xs text-[var(--text-secondary)]">
+                              <span className="text-xs text-(--text-secondary)">
                                 Update pending
                               </span>
                             )
@@ -2110,7 +2192,7 @@ export default function ProductsPage() {
                               </button>
                             </>
                           ) : isDeletePending ? (
-                            <span className="text-xs text-[var(--text-secondary)]">
+                            <span className="text-xs text-(--text-secondary)">
                               Delete pending
                             </span>
                           ) : null}
@@ -2216,7 +2298,7 @@ export default function ProductsPage() {
                                 (!deleteRequest?.status ||
                                   deleteRequest.status === "none") ? (
                                   <span className="text-xs text-(--text-secondary)">
-                                    —
+                                    â€”
                                   </span>
                                 ) : null}
                               </div>
@@ -2331,11 +2413,11 @@ export default function ProductsPage() {
               </>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--stroke-soft)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-(--stroke-soft) px-4 py-3 text-sm text-(--text-secondary)">
               <p>
-                {filteredVariants.length === 0
+                {variantPagination.total === 0
                   ? "No variants"
-                  : `Showing ${filteredVariants.length === 0 ? 0 : (currentVariantPage - 1) * PRODUCTS_PER_PAGE + 1}-${Math.min(currentVariantPage * PRODUCTS_PER_PAGE, filteredVariants.length)} of ${filteredVariants.length}`}
+                  : `Showing ${variantStartIndex}-${variantEndIndex} of ${variantPagination.total}`}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -2388,7 +2470,7 @@ export default function ProductsPage() {
           </DialogHeader>
 
           <div className="space-y-2">
-            <label className="block text-sm text-[var(--text-secondary)]">
+            <label className="block text-sm text-(--text-secondary)">
               New selling price
             </label>
             <input

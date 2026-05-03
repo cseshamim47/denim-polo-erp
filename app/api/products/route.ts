@@ -98,13 +98,64 @@ export async function GET(request: Request) {
   await connectToDatabase();
 
   const { searchParams } = new URL(request.url);
+  const forOptions = searchParams.get("forOptions") === "1";
+  const pageParam = searchParams.get("page");
+  const pageSizeParam = searchParams.get("pageSize");
   const category = searchParams.get("category")?.trim().toUpperCase();
-  const query = category ? { isActive: true, category } : { isActive: true };
+  const search = searchParams.get("search")?.trim();
+  const stock = searchParams.get("stock");
+  const deleteStatus = searchParams.get("deleteStatus");
 
-  const [products, partners] = await Promise.all([
+  const query: Record<string, unknown> = category
+    ? { isActive: true, category }
+    : { isActive: true };
+
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { category: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const shouldPaginate = Boolean(pageParam || pageSizeParam);
+  const page = Math.max(1, Number(pageParam ?? "1") || 1);
+  const pageSize = Math.max(
+    1,
+    Math.min(100, Number(pageSizeParam ?? "8") || 8),
+  );
+
+  if (forOptions) {
+    const products = await ProductModel.find({ isActive: true })
+      .select({ name: 1, category: 1, description: 1 })
+      .sort({ category: 1, name: 1 })
+      .lean();
+
+    return NextResponse.json({
+      products: products.map((product) => ({
+        id: product._id.toString(),
+        name: product.name,
+        category: product.category,
+        description: product.description,
+      })),
+    });
+  }
+
+  const [products, partners, stockByProduct] = await Promise.all([
     ProductModel.find(query).sort({ category: 1, name: 1 }).lean(),
     UserModel.find({ role: "partner" }).select({ name: 1, isActive: 1 }).lean(),
+    VariantModel.aggregate<{
+      _id: Types.ObjectId;
+      stockQty: number;
+    }>([
+      { $match: { isActive: true } },
+      { $group: { _id: "$productId", stockQty: { $sum: "$stockQty" } } },
+    ]),
   ]);
+
+  const stockQtyByProductId = new Map(
+    stockByProduct.map((entry) => [entry._id.toString(), entry.stockQty]),
+  );
 
   const partnerNameById = new Map(
     partners.map((partner) => [partner._id.toString(), partner.name]),
@@ -112,13 +163,26 @@ export async function GET(request: Request) {
   const configuredPartnerCount = getConfiguredPartnerCount();
   const activePartners = partners.filter((partner) => partner.isActive);
 
-  return NextResponse.json({
-    products: products.map((product) => {
+  const normalizedDeleteStatusFilter =
+    deleteStatus === "pending" ||
+    deleteStatus === "approved" ||
+    deleteStatus === "rejected" ||
+    deleteStatus === "none"
+      ? deleteStatus
+      : "all";
+
+  const normalizedStockFilter =
+    stock === "in-stock" || stock === "zero-stock" ? stock : "all";
+
+  const mappedProducts = products
+    .map((product) => {
       const normalizedStatus = normalizeDeleteRequestStatus({
         status: product.deleteRequestStatus,
         requestedById: product.deleteRequestedBy?.toString(),
         isActive: product.isActive,
       });
+
+      const stockQty = stockQtyByProductId.get(product._id.toString()) ?? 0;
 
       return {
         id: product._id.toString(),
@@ -126,6 +190,7 @@ export async function GET(request: Request) {
         category: product.category,
         description: product.description,
         isActive: product.isActive,
+        stockQty,
         deleteRequest: {
           status: normalizedStatus,
           requestedById: product.deleteRequestedBy?.toString() ?? null,
@@ -164,7 +229,43 @@ export async function GET(request: Request) {
           })),
         },
       };
-    }),
+    })
+    .filter((product) => {
+      if (
+        normalizedDeleteStatusFilter !== "all" &&
+        product.deleteRequest.status !== normalizedDeleteStatusFilter
+      ) {
+        return false;
+      }
+
+      if (normalizedStockFilter === "in-stock" && product.stockQty <= 0) {
+        return false;
+      }
+
+      if (normalizedStockFilter === "zero-stock" && product.stockQty > 0) {
+        return false;
+      }
+
+      return true;
+    });
+
+  if (!shouldPaginate) {
+    return NextResponse.json({ products: mappedProducts });
+  }
+
+  const total = mappedProducts.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(page, totalPages);
+  const startIndex = (normalizedPage - 1) * pageSize;
+
+  return NextResponse.json({
+    products: mappedProducts.slice(startIndex, startIndex + pageSize),
+    pagination: {
+      total,
+      page: normalizedPage,
+      pageSize,
+      totalPages,
+    },
   });
 }
 

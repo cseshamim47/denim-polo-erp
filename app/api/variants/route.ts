@@ -12,7 +12,7 @@ import VariantModel from "@/models/Variant";
 
 const createVariantSchema = z.object({
   productId: z.string().trim().min(1),
-  color: z.string().trim().min(1),
+  color: z.string().trim().optional().default(""),
   size: z.string().trim().min(1).optional(),
   sizes: z.array(z.string().trim().min(1)).min(1).optional(),
   barcode: z.string().trim().optional(),
@@ -172,6 +172,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const productId = searchParams.get("productId")?.trim();
   const search = searchParams.get("search")?.trim().toUpperCase();
+  const stock = searchParams.get("stock");
+  const deleteStatus = searchParams.get("deleteStatus");
+  const pageParam = searchParams.get("page");
+  const pageSizeParam = searchParams.get("pageSize");
+  const shouldPaginate = Boolean(pageParam || pageSizeParam);
+  const page = Math.max(1, Number(pageParam ?? "1") || 1);
+  const pageSize = Math.max(
+    1,
+    Math.min(100, Number(pageSizeParam ?? "8") || 8),
+  );
   const query: Record<string, unknown> = { isActive: true };
 
   if (productId) {
@@ -186,6 +196,14 @@ export async function GET(request: Request) {
     ];
   }
 
+  if (stock === "in-stock") {
+    query.stockQty = { $gt: 0 };
+  }
+
+  if (stock === "zero-stock") {
+    query.stockQty = { $lte: 0 };
+  }
+
   const [variants, partners] = await Promise.all([
     VariantModel.find(query).sort({ sku: 1 }).lean(),
     UserModel.find({ role: "partner" }).select({ name: 1, isActive: 1 }).lean(),
@@ -197,8 +215,16 @@ export async function GET(request: Request) {
   const configuredPartnerCount = getConfiguredPartnerCount();
   const activePartners = partners.filter((partner) => partner.isActive);
 
-  return NextResponse.json({
-    variants: variants.map((variant) => {
+  const normalizedDeleteStatusFilter =
+    deleteStatus === "pending" ||
+    deleteStatus === "approved" ||
+    deleteStatus === "rejected" ||
+    deleteStatus === "none"
+      ? deleteStatus
+      : "all";
+
+  const mappedVariants = variants
+    .map((variant) => {
       const normalizedStatus = normalizeDeleteRequestStatus({
         status: variant.deleteRequestStatus,
         requestedById: variant.deleteRequestedBy?.toString(),
@@ -314,7 +340,35 @@ export async function GET(request: Request) {
           })),
         },
       };
-    }),
+    })
+    .filter((variant) => {
+      if (
+        normalizedDeleteStatusFilter !== "all" &&
+        variant.deleteRequest.status !== normalizedDeleteStatusFilter
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+  if (!shouldPaginate) {
+    return NextResponse.json({ variants: mappedVariants });
+  }
+
+  const total = mappedVariants.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const normalizedPage = Math.min(page, totalPages);
+  const startIndex = (normalizedPage - 1) * pageSize;
+
+  return NextResponse.json({
+    variants: mappedVariants.slice(startIndex, startIndex + pageSize),
+    pagination: {
+      total,
+      page: normalizedPage,
+      pageSize,
+      totalPages,
+    },
   });
 }
 
@@ -448,7 +502,8 @@ export async function DELETE(request: Request) {
     requestedById: variant.deleteRequestedBy?.toString(),
     requestedAt: variant.deleteRequestedAt,
     approvalCount: variant.deleteApprovals?.length ?? 0,
-    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
+    requiredApprovalCountSnapshot:
+      variant.deleteRequiredApprovalCountSnapshot ?? 0,
     isActive: variant.isActive,
   });
 
@@ -528,7 +583,8 @@ export async function PUT(request: Request) {
     requestedById: variant.deleteRequestedBy?.toString(),
     requestedAt: variant.deleteRequestedAt,
     approvalCount: variant.deleteApprovals?.length ?? 0,
-    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
+    requiredApprovalCountSnapshot:
+      variant.deleteRequiredApprovalCountSnapshot ?? 0,
     isActive: variant.isActive,
   });
 
@@ -544,7 +600,8 @@ export async function PUT(request: Request) {
     requestedById: variant.updateRequestedBy?.toString(),
     requestedAt: variant.updateRequestedAt,
     approvalCount: variant.updateApprovals?.length ?? 0,
-    requiredApprovalCountSnapshot: variant.updateRequiredApprovalCountSnapshot ?? 0,
+    requiredApprovalCountSnapshot:
+      variant.updateRequiredApprovalCountSnapshot ?? 0,
     hasProposedSellingPrice: variant.updateProposedSellingPrice != null,
     finalizedAt: variant.updateFinalizedAt,
     isActive: variant.isActive,
@@ -594,7 +651,9 @@ export async function PUT(request: Request) {
     variant.updateRequestedAt = new Date();
     variant.updateProposedColor = variant.color;
     variant.updateProposedSize = variant.size;
-    variant.updateProposedSellingPrice = toDecimal128(proposedSellingPrice) as never;
+    variant.updateProposedSellingPrice = toDecimal128(
+      proposedSellingPrice,
+    ) as never;
     variant.updateApprovals = [];
     variant.updateRequiredApproverIdsSnapshot = [];
     variant.updateRequiredApprovalCountSnapshot = 0;
@@ -609,7 +668,9 @@ export async function PUT(request: Request) {
   variant.updateRequestedAt = new Date();
   variant.updateProposedColor = variant.color;
   variant.updateProposedSize = variant.size;
-  variant.updateProposedSellingPrice = toDecimal128(proposedSellingPrice) as never;
+  variant.updateProposedSellingPrice = toDecimal128(
+    proposedSellingPrice,
+  ) as never;
   variant.updateApprovals = [];
   variant.updateRequiredApproverIdsSnapshot = requiredApproverIds;
   variant.updateRequiredApprovalCountSnapshot = requiredApprovalCountSnapshot;
@@ -775,7 +836,8 @@ export async function PATCH(request: Request) {
     requestedById: variant.deleteRequestedBy?.toString(),
     requestedAt: variant.deleteRequestedAt,
     approvalCount: variant.deleteApprovals?.length ?? 0,
-    requiredApprovalCountSnapshot: variant.deleteRequiredApprovalCountSnapshot ?? 0,
+    requiredApprovalCountSnapshot:
+      variant.deleteRequiredApprovalCountSnapshot ?? 0,
     isActive: variant.isActive,
   });
 
