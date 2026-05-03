@@ -367,6 +367,17 @@ function buildSaleSnapshot({ stockQty, soldQty, sellingPrice, avgCost }) {
   };
 }
 
+const TARGET_SEED_COUNT = 1000;
+const PRODUCT_CATEGORIES = ["JEANS", "POLO", "PANJABI", "SHIRT", "TEE"];
+const PRODUCT_COLORS = ["BLK", "BLU", "WHT", "GRN", "CRM", "NVY", "RED"];
+const PRODUCT_SIZES = ["S", "M", "L", "XL", "28", "30", "32", "34", "36", "40"];
+const SALE_PAYMENT_METHODS = ["cash", "bkash", "card", "nagad"];
+const EXPENSE_CATEGORIES = ["Rent", "Marketing", "Maintenance", "Utilities", "Logistics"];
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function derivePartnerSeeds() {
   const allowList = (process.env.PARTNER_EMAILS ?? "")
     .split(",")
@@ -440,91 +451,40 @@ async function resetDemoCollections() {
 }
 
 async function createCatalog() {
-  const products = await Product.insertMany([
-    {
-      name: "Heritage Denim Jeans",
-      category: "JEANS",
-      description: "Daily best-seller with stretch denim fit.",
-      isActive: true,
-    },
-    {
-      name: "Classic Polo Shirt",
-      category: "POLO",
-      description: "Core polo line for shop walk-in customers.",
-      isActive: true,
-    },
-    {
-      name: "Festive Panjabi",
-      category: "PANJABI",
-      description: "Seasonal premium panjabi collection.",
-      isActive: true,
-    },
-  ]);
+  const products = await Product.insertMany(
+    Array.from({ length: TARGET_SEED_COUNT }, (_, index) => {
+      const sequence = String(index + 1).padStart(4, "0");
+      const category = PRODUCT_CATEGORIES[index % PRODUCT_CATEGORIES.length];
 
-  const [jeans, polo, panjabi] = products;
+      return {
+        name: `Demo ${category} Product ${sequence}`,
+        category,
+        description: `Auto-seeded random product ${sequence}`,
+        isActive: true,
+      };
+    }),
+  );
 
-  const variants = await Variant.insertMany([
-    {
-      productId: jeans._id,
-      color: "BLK",
-      size: "32",
-      sku: generateSku(jeans.category, "BLK", "32"),
-      barcode: null,
-      stockQty: 0,
-      avgCost: toDecimal128(0),
-      sellingPrice: toDecimal128(950),
-      lowStockThreshold: 3,
-      isActive: true,
-    },
-    {
-      productId: jeans._id,
-      color: "BLU",
-      size: "34",
-      sku: generateSku(jeans.category, "BLU", "34"),
-      barcode: null,
-      stockQty: 0,
-      avgCost: toDecimal128(0),
-      sellingPrice: toDecimal128(990),
-      lowStockThreshold: 4,
-      isActive: true,
-    },
-    {
-      productId: polo._id,
-      color: "WHT",
-      size: "M",
-      sku: generateSku(polo.category, "WHT", "M"),
-      barcode: null,
-      stockQty: 0,
-      avgCost: toDecimal128(0),
-      sellingPrice: toDecimal128(650),
-      lowStockThreshold: 5,
-      isActive: true,
-    },
-    {
-      productId: polo._id,
-      color: "GRN",
-      size: "L",
-      sku: generateSku(polo.category, "GRN", "L"),
-      barcode: null,
-      stockQty: 0,
-      avgCost: toDecimal128(0),
-      sellingPrice: toDecimal128(690),
-      lowStockThreshold: 2,
-      isActive: true,
-    },
-    {
-      productId: panjabi._id,
-      color: "CRM",
-      size: "42",
-      sku: generateSku(panjabi.category, "CRM", "42"),
-      barcode: null,
-      stockQty: 0,
-      avgCost: toDecimal128(0),
-      sellingPrice: toDecimal128(1450),
-      lowStockThreshold: 2,
-      isActive: true,
-    },
-  ]);
+  const variants = await Variant.insertMany(
+    products.map((product, index) => {
+      const sequence = String(index + 1).padStart(4, "0");
+      const color = PRODUCT_COLORS[index % PRODUCT_COLORS.length];
+      const size = PRODUCT_SIZES[index % PRODUCT_SIZES.length];
+
+      return {
+        productId: product._id,
+        color,
+        size,
+        sku: `DP-${product.category}-${sequence}`,
+        barcode: null,
+        stockQty: 0,
+        avgCost: toDecimal128(0),
+        sellingPrice: toDecimal128(randomInt(600, 1800)),
+        lowStockThreshold: randomInt(2, 8),
+        isActive: true,
+      };
+    }),
+  );
 
   return { products, variants };
 }
@@ -532,179 +492,118 @@ async function createCatalog() {
 async function createPurchases({ variants, partners }) {
   requireDemoPartners(partners);
 
-  const submitter = partners[0];
-  const approvers = getOtherPartners(partners, submitter._id);
-  const purchasePlan = [
-    {
-      variant: variants[0],
-      qty: 18,
-      costPerUnit: 540,
-      purchaseDate: new Date("2026-04-01T09:30:00.000Z"),
-      billImageUrl: "https://utfs.io/f/demo-jeans-black-bill.jpg",
-      note: "Opening month denim replenishment",
-    },
-    {
-      variant: variants[1],
-      qty: 14,
-      costPerUnit: 560,
-      purchaseDate: new Date("2026-04-03T10:10:00.000Z"),
-      billImageUrl: "https://utfs.io/f/demo-jeans-blue-bill.jpg",
-      note: "Blue wash restock",
-    },
-    {
-      variant: variants[2],
-      qty: 24,
-      costPerUnit: 340,
-      purchaseDate: new Date("2026-04-04T11:00:00.000Z"),
-      billImageUrl: "https://utfs.io/f/demo-polo-white-bill.jpg",
-      note: "Summer polo batch",
-    },
-    {
-      variant: variants[3],
-      qty: 8,
-      costPerUnit: 355,
-      purchaseDate: new Date("2026-04-05T11:20:00.000Z"),
-      billImageUrl: "https://utfs.io/f/demo-polo-green-bill.jpg",
-      note: "Limited low-stock colorway",
-    },
-    {
-      variant: variants[4],
-      qty: 6,
-      costPerUnit: 910,
-      purchaseDate: new Date("2026-04-07T12:05:00.000Z"),
-      billImageUrl: "https://utfs.io/f/demo-panjabi-cream-bill.jpg",
-      note: "Festive season pickup",
-    },
-  ];
+  const purchases = [];
+  const variantUpdates = [];
 
-  for (const entry of purchasePlan) {
-    const currentVariant = await Variant.findById(entry.variant._id);
-    const avgCost = Number(currentVariant.avgCost.toString());
-    const result = applyPurchase({
-      oldStock: currentVariant.stockQty,
-      oldAvgCost: avgCost,
-      purchaseQty: entry.qty,
-      costPerUnit: entry.costPerUnit,
-    });
+  for (let index = 0; index < TARGET_SEED_COUNT; index += 1) {
+    const submitter = partners[index % partners.length];
+    const approvers = getOtherPartners(partners, submitter._id);
+    const variant = variants[index % variants.length];
+    const qty = randomInt(20, 70);
+    const costPerUnit = randomInt(250, 1200);
+    const purchaseDate = new Date(Date.UTC(2026, 0, 1 + index, 9, index % 59, 0));
+    const totalCost = qty * costPerUnit;
 
-    currentVariant.stockQty = result.newStock;
-    currentVariant.avgCost = toDecimal128(result.newAvgCost);
-    await currentVariant.save();
-
-    const totalCost = entry.qty * entry.costPerUnit;
-
-    await Purchase.create({
-      variantId: currentVariant._id,
-      qty: entry.qty,
-      costPerUnit: toDecimal128(entry.costPerUnit),
-      landedCostPerUnit: toDecimal128(entry.costPerUnit),
+    purchases.push({
+      variantId: variant._id,
+      qty,
+      costPerUnit: toDecimal128(costPerUnit),
+      landedCostPerUnit: toDecimal128(costPerUnit),
       totalCost: toDecimal128(totalCost),
       additionalCost: toDecimal128(0),
       cashOutTotal: toDecimal128(totalCost),
-      billImageUrl: entry.billImageUrl,
-      purchaseDate: entry.purchaseDate,
-      note: entry.note,
+      billImageUrl: null,
+      purchaseDate,
+      note: `Seed purchase ${index + 1}`,
       createdBy: submitter._id,
       status: "approved",
-      approvals: approvers.map((partner, index) => ({
+      approvals: approvers.map((partner, approverIndex) => ({
         partnerId: partner._id,
         decision: "approved",
-        decidedAt: new Date(entry.purchaseDate.getTime() + (index + 1) * 3600000),
-        comment: index === 0 ? "Stock received and checked" : "Approved",
+        decidedAt: new Date(purchaseDate.getTime() + (approverIndex + 1) * 3600000),
+        comment: approverIndex === 0 ? "Stock received and checked" : "Approved",
       })),
       requiredApproverIdsSnapshot: approvers.map((partner) => partner._id),
       requiredApprovalCountSnapshot: approvers.length,
     });
+
+    variantUpdates.push({
+      updateOne: {
+        filter: { _id: variant._id },
+        update: {
+          $set: {
+            stockQty: qty,
+            avgCost: toDecimal128(costPerUnit),
+          },
+        },
+      },
+    });
   }
+
+  await Variant.bulkWrite(variantUpdates);
+  await Purchase.insertMany(purchases);
 }
 
 async function createSales({ variants, productsById, salesman }) {
-  const salePlans = [
-    {
-      saleNumber: "SALE-DEMO-001",
-      saleDate: new Date("2026-04-10T12:00:00.000Z"),
-      paymentMethod: "cash",
-      items: [
-        { variant: variants[0], qty: 2 },
-        { variant: variants[2], qty: 3 },
-      ],
-    },
-    {
-      saleNumber: "SALE-DEMO-002",
-      saleDate: new Date("2026-04-12T15:15:00.000Z"),
-      paymentMethod: "bkash",
-      items: [
-        { variant: variants[1], qty: 1 },
-        { variant: variants[3], qty: 2 },
-      ],
-    },
-    {
-      saleNumber: "SALE-DEMO-003",
-      saleDate: new Date("2026-04-14T18:10:00.000Z"),
-      paymentMethod: "cash",
-      items: [
-        { variant: variants[4], qty: 1 },
-        { variant: variants[0], qty: 13 },
-      ],
-    },
-  ];
-
   const sales = [];
+  const variantUpdates = [];
 
-  for (const plan of salePlans) {
-    let subtotal = 0;
-    const items = [];
+  for (let index = 0; index < TARGET_SEED_COUNT; index += 1) {
+    const saleNumber = `SALE-DEMO-${String(index + 1).padStart(4, "0")}`;
+    const saleDate = new Date(Date.UTC(2026, 1, 1 + index, 13, index % 59, 0));
+    const paymentMethod = SALE_PAYMENT_METHODS[index % SALE_PAYMENT_METHODS.length];
+    const variant = variants[index % variants.length];
+    const sellingPrice = Number(variant.sellingPrice.toString());
+    const avgCost = Number(variant.avgCost.toString());
+    const stockQty = randomInt(20, 70);
+    const soldQty = randomInt(1, 5);
+    const snapshot = buildSaleSnapshot({
+      stockQty,
+      soldQty,
+      sellingPrice,
+      avgCost,
+    });
+    const lineSubtotal = Number((sellingPrice * soldQty).toFixed(2));
 
-    for (const line of plan.items) {
-      const variant = await Variant.findById(line.variant._id);
-      const sellingPrice = Number(variant.sellingPrice.toString());
-      const avgCost = Number(variant.avgCost.toString());
-      const snapshot = buildSaleSnapshot({
-        stockQty: variant.stockQty,
-        soldQty: line.qty,
-        sellingPrice,
-        avgCost,
-      });
-      const lineSubtotal = Number((sellingPrice * line.qty).toFixed(2));
+    variantUpdates.push({
+      updateOne: {
+        filter: { _id: variant._id },
+        update: { $set: { stockQty: snapshot.remainingStock } },
+      },
+    });
 
-      variant.stockQty = snapshot.remainingStock;
-      await variant.save();
-
-      subtotal += lineSubtotal;
-
-      items.push({
-        variantId: variant._id,
-        productSnapshot: productsById.get(variant.productId.toString()).name,
-        skuSnapshot: variant.sku,
-        colorSnapshot: variant.color,
-        sizeSnapshot: variant.size,
-        qty: line.qty,
-        sellingPriceSnapshot: toDecimal128(sellingPrice),
-        avgCostSnapshot: toDecimal128(avgCost),
-        profitPerUnitSnapshot: toDecimal128(snapshot.profitPerItem),
-        lineSubtotal: toDecimal128(lineSubtotal),
-        lineDiscount: toDecimal128(0),
-        lineTotal: toDecimal128(lineSubtotal),
-        returnedQty: 0,
-        damagedQty: 0,
-      });
-    }
-
-    const sale = await Sale.create({
-      saleNumber: plan.saleNumber,
-      items,
-      subtotal: toDecimal128(subtotal),
+    sales.push({
+      saleNumber,
+      items: [
+        {
+          variantId: variant._id,
+          productSnapshot: productsById.get(variant.productId.toString()).name,
+          skuSnapshot: variant.sku,
+          colorSnapshot: variant.color,
+          sizeSnapshot: variant.size,
+          qty: soldQty,
+          sellingPriceSnapshot: toDecimal128(sellingPrice),
+          avgCostSnapshot: toDecimal128(avgCost),
+          profitPerUnitSnapshot: toDecimal128(snapshot.profitPerItem),
+          lineSubtotal: toDecimal128(lineSubtotal),
+          lineDiscount: toDecimal128(0),
+          lineTotal: toDecimal128(lineSubtotal),
+          returnedQty: 0,
+          damagedQty: 0,
+        },
+      ],
+      subtotal: toDecimal128(lineSubtotal),
       discountTotal: toDecimal128(0),
-      grandTotal: toDecimal128(subtotal),
-      paymentMethod: plan.paymentMethod,
+      grandTotal: toDecimal128(lineSubtotal),
+      paymentMethod,
       soldBy: salesman._id,
-      saleDate: plan.saleDate,
+      saleDate,
       status: "completed",
     });
-    sales.push(sale);
   }
 
-  return sales;
+  await Variant.bulkWrite(variantUpdates);
+  return Sale.insertMany(sales);
 }
 
 async function createReturns({ sales, partner }) {
@@ -731,7 +630,7 @@ async function createReturns({ sales, partner }) {
   });
 
   const damagedReturnSale = sales[1];
-  const damagedReturnLine = damagedReturnSale.items[1];
+  const damagedReturnLine = damagedReturnSale.items[0];
   damagedReturnLine.damagedQty += 1;
   await damagedReturnSale.save();
 
@@ -765,206 +664,103 @@ function getOtherPartners(partners, partnerId) {
 async function createExpenses({ partners }) {
   requireDemoPartners(partners);
 
-  const partnerOne = partners[0];
-  const partnerTwo = partners[1];
-  const partnerThree = partners[2] ?? partners[0];
-  const partnerOneApprovers = getOtherPartners(partners, partnerOne._id);
-  const partnerTwoApprovers = getOtherPartners(partners, partnerTwo._id);
-  const partnerThreeApprovers = getOtherPartners(partners, partnerThree._id);
+  const expenses = Array.from({ length: TARGET_SEED_COUNT }, (_, index) => {
+    const submitter = partners[index % partners.length];
+    const approvers = getOtherPartners(partners, submitter._id);
+    const status = index % 6 === 0 ? "pending" : index % 9 === 0 ? "rejected" : "approved";
+    const submittedAt = new Date(Date.UTC(2026, 2, 1 + index, 10, index % 59, 0));
+    const decisionTime = new Date(submittedAt.getTime() + 3600000);
+    let approvals = [];
 
-  await Expense.insertMany([
-    {
-      title: "Shop rent",
-      amount: toDecimal128(12000),
-      category: "Rent",
-      note: "Monthly showroom rent",
-      submittedBy: partnerOne._id,
-      submittedAt: new Date("2026-04-05T09:00:00.000Z"),
-      status: "approved",
-      approvals: partnerOneApprovers.map((partner, index) => ({
+    if (status === "approved") {
+      approvals = approvers.map((partner, approverIndex) => ({
         partnerId: partner._id,
         decision: "approved",
-        decidedAt: new Date(`2026-04-05T1${index}:00:00.000Z`),
-        comment: index === 0 ? "Looks correct" : "Approved",
-      })),
-      requiredApproverIdsSnapshot: partnerOneApprovers.map(
-        (partner) => partner._id,
-      ),
-      requiredApprovalCountSnapshot: partnerOneApprovers.length,
-      expenseDate: new Date("2026-04-05T09:00:00.000Z"),
-    },
-    {
-      title: "Facebook boost",
-      amount: toDecimal128(2500),
-      category: "Marketing",
-      note: "Eid campaign still waiting for final confirmation",
-      submittedBy: partnerTwo._id,
-      submittedAt: new Date("2026-04-18T09:20:00.000Z"),
-      status: "pending",
-      approvals: partnerTwoApprovers.slice(0, 1).map((partner) => ({
+        decidedAt: new Date(decisionTime.getTime() + approverIndex * 1800000),
+        comment: "Approved",
+      }));
+    } else if (status === "pending") {
+      approvals = approvers.slice(0, 1).map((partner) => ({
         partnerId: partner._id,
         decision: "approved",
-        decidedAt: new Date("2026-04-18T10:10:00.000Z"),
-        comment: "Try for three days",
-      })),
-      requiredApproverIdsSnapshot: partnerTwoApprovers.map(
-        (partner) => partner._id,
-      ),
-      requiredApprovalCountSnapshot: partnerTwoApprovers.length,
-      expenseDate: new Date("2026-04-18T09:20:00.000Z"),
-    },
-    {
-      title: "Store repaint advance",
-      amount: toDecimal128(4000),
-      category: "Maintenance",
-      note: "Rejected until after the festival rush",
-      submittedBy: partnerThree._id,
-      submittedAt: new Date("2026-04-09T13:00:00.000Z"),
-      status: "rejected",
-      approvals: partnerThreeApprovers.slice(0, 1).map((partner) => ({
+        decidedAt: decisionTime,
+        comment: "Waiting for final approval",
+      }));
+    } else {
+      approvals = approvers.slice(0, 1).map((partner) => ({
         partnerId: partner._id,
         decision: "rejected",
-        decidedAt: new Date("2026-04-09T14:00:00.000Z"),
-        comment: "Defer until next month",
-      })),
-      requiredApproverIdsSnapshot: partnerThreeApprovers.map(
-        (partner) => partner._id,
-      ),
-      requiredApprovalCountSnapshot: partnerThreeApprovers.length,
-      expenseDate: new Date("2026-04-09T13:00:00.000Z"),
-    },
-  ]);
+        decidedAt: decisionTime,
+        comment: "Rejected for incomplete details",
+      }));
+    }
+
+    return {
+      title: `Seed expense ${index + 1}`,
+      amount: toDecimal128(randomInt(500, 25000)),
+      category: EXPENSE_CATEGORIES[index % EXPENSE_CATEGORIES.length],
+      note: `Auto-seeded ${status} expense entry`,
+      submittedBy: submitter._id,
+      submittedAt,
+      status,
+      approvals,
+      requiredApproverIdsSnapshot: approvers.map((partner) => partner._id),
+      requiredApprovalCountSnapshot: approvers.length,
+      expenseDate: submittedAt,
+    };
+  });
+
+  await Expense.insertMany(expenses);
 }
 
 async function createInvestments({ partners }) {
   requireDemoPartners(partners);
 
-  await Investment.insertMany([
-    {
-      partnerId: partners[0]._id,
-      amount: toDecimal128(70000),
-      note: "Initial capital injection",
-      submittedAt: new Date("2026-04-01T08:00:00.000Z"),
-      status: "approved",
-      approvals: getOtherPartners(partners, partners[0]._id).map(
-        (partner, index) => ({
-          partnerId: partner._id,
-          decision: "approved",
-          decidedAt: new Date(`2026-04-01T09:${index}0:00.000Z`),
-          comment: "Confirmed",
-        }),
-      ),
-      requiredApproverIdsSnapshot: getOtherPartners(
-        partners,
-        partners[0]._id,
-      ).map((partner) => partner._id),
-      requiredApprovalCountSnapshot: getOtherPartners(
-        partners,
-        partners[0]._id,
-      ).length,
-      investedAt: new Date("2026-04-01T08:00:00.000Z"),
-    },
-    {
-      partnerId: partners[1]._id,
-      amount: toDecimal128(50000),
-      note: "Inventory capital",
-      submittedAt: new Date("2026-04-01T08:10:00.000Z"),
-      status: "approved",
-      approvals: getOtherPartners(partners, partners[1]._id).map(
-        (partner, index) => ({
-          partnerId: partner._id,
-          decision: "approved",
-          decidedAt: new Date(`2026-04-01T09:2${index}:00.000Z`),
-          comment: index === 0 ? "Looks good" : "Approved",
-        }),
-      ),
-      requiredApproverIdsSnapshot: getOtherPartners(
-        partners,
-        partners[1]._id,
-      ).map((partner) => partner._id),
-      requiredApprovalCountSnapshot: getOtherPartners(
-        partners,
-        partners[1]._id,
-      ).length,
-      investedAt: new Date("2026-04-01T08:10:00.000Z"),
-    },
-    {
-      partnerId: partners[0]._id,
-      amount: toDecimal128(12000),
-      note: "Pending extra stock money for new arrivals.",
-      submittedAt: new Date("2026-04-18T10:00:00.000Z"),
-      status: "pending",
-      approvals: getOtherPartners(partners, partners[0]._id)
-        .slice(0, 1)
-        .map((partner) => ({
-          partnerId: partner._id,
-          decision: "approved",
-          decidedAt: new Date("2026-04-18T10:30:00.000Z"),
-          comment: "Need one more partner confirmation",
-        })),
-      requiredApproverIdsSnapshot: getOtherPartners(
-        partners,
-        partners[0]._id,
-      ).map((partner) => partner._id),
-      requiredApprovalCountSnapshot: getOtherPartners(
-        partners,
-        partners[0]._id,
-      ).length,
-      investedAt: new Date("2026-04-18T10:00:00.000Z"),
-    },
-    {
-      partnerId: partners[1]._id,
-      amount: toDecimal128(9000),
-      note: "Rejected because transfer proof missing.",
-      submittedAt: new Date("2026-04-15T13:00:00.000Z"),
-      status: "rejected",
-      approvals: getOtherPartners(partners, partners[1]._id)
-        .slice(0, 1)
-        .map((partner) => ({
-          partnerId: partner._id,
-          decision: "rejected",
-          decidedAt: new Date("2026-04-15T14:00:00.000Z"),
-          comment: "Upload transfer note first",
-        })),
-      requiredApproverIdsSnapshot: getOtherPartners(
-        partners,
-        partners[1]._id,
-      ).map((partner) => partner._id),
-      requiredApprovalCountSnapshot: getOtherPartners(
-        partners,
-        partners[1]._id,
-      ).length,
-      investedAt: new Date("2026-04-15T13:00:00.000Z"),
-    },
-    ...(partners[2]
-      ? [
-          {
-            partnerId: partners[2]._id,
-            amount: toDecimal128(30000),
-            note: "Working cash buffer",
-            submittedAt: new Date("2026-04-01T08:20:00.000Z"),
-            status: "approved",
-            approvals: getOtherPartners(partners, partners[2]._id).map(
-              (partner) => ({
-                partnerId: partner._id,
-                decision: "approved",
-                decidedAt: new Date("2026-04-01T09:30:00.000Z"),
-                comment: "Approved",
-              }),
-            ),
-            requiredApproverIdsSnapshot: getOtherPartners(
-              partners,
-              partners[2]._id,
-            ).map((partner) => partner._id),
-            requiredApprovalCountSnapshot: getOtherPartners(
-              partners,
-              partners[2]._id,
-            ).length,
-            investedAt: new Date("2026-04-01T08:20:00.000Z"),
-          },
-        ]
-      : []),
-  ]);
+  const investments = Array.from({ length: TARGET_SEED_COUNT }, (_, index) => {
+    const partner = partners[index % partners.length];
+    const approvers = getOtherPartners(partners, partner._id);
+    const status = index % 7 === 0 ? "pending" : index % 11 === 0 ? "rejected" : "approved";
+    const submittedAt = new Date(Date.UTC(2026, 1, 1 + index, 8, index % 59, 0));
+    const decisionTime = new Date(submittedAt.getTime() + 3600000);
+    let approvals = [];
+
+    if (status === "approved") {
+      approvals = approvers.map((approver, approverIndex) => ({
+        partnerId: approver._id,
+        decision: "approved",
+        decidedAt: new Date(decisionTime.getTime() + approverIndex * 1800000),
+        comment: "Approved",
+      }));
+    } else if (status === "pending") {
+      approvals = approvers.slice(0, 1).map((approver) => ({
+        partnerId: approver._id,
+        decision: "approved",
+        decidedAt: decisionTime,
+        comment: "Waiting for remaining approvals",
+      }));
+    } else {
+      approvals = approvers.slice(0, 1).map((approver) => ({
+        partnerId: approver._id,
+        decision: "rejected",
+        decidedAt: decisionTime,
+        comment: "Rejected during review",
+      }));
+    }
+
+    return {
+      partnerId: partner._id,
+      amount: toDecimal128(randomInt(5000, 250000)),
+      note: `Seed investment ${index + 1}`,
+      submittedAt,
+      status,
+      approvals,
+      requiredApproverIdsSnapshot: approvers.map((approver) => approver._id),
+      requiredApprovalCountSnapshot: approvers.length,
+      investedAt: submittedAt,
+    };
+  });
+
+  await Investment.insertMany(investments);
 }
 
 async function main() {
@@ -1002,3 +798,4 @@ main()
   .finally(async () => {
     await mongoose.disconnect();
   });
+
