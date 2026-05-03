@@ -90,7 +90,13 @@ const variantSchema = new Schema<Variant>(
       required: true,
       index: true,
     },
-    color: { type: String, required: false, trim: true, uppercase: true, default: "" },
+    color: {
+      type: String,
+      required: false,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
     size: { type: String, required: true, trim: true, uppercase: true },
     sku: {
       type: String,
@@ -126,7 +132,11 @@ const variantSchema = new Schema<Variant>(
       type: [{ type: Schema.Types.ObjectId, ref: "User", required: true }],
       default: [],
     },
-    deleteRequiredApprovalCountSnapshot: { type: Number, required: true, default: 0 },
+    deleteRequiredApprovalCountSnapshot: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
     deleteFinalizedAt: { type: Date, default: null },
     updateRequestStatus: {
       type: String,
@@ -235,6 +245,7 @@ if (existingVariantModel) {
   patchVariantSchema(existingVariantModel.schema);
 }
 
-const VariantModel = existingVariantModel || model<Variant>("Variant", variantSchema);
+const VariantModel =
+  existingVariantModel || model<Variant>("Variant", variantSchema);
 
 export default VariantModel;
