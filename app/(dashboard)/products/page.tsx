@@ -381,7 +381,7 @@ export default function ProductsPage() {
     try {
       const [productsResponse, variantsResponse] = await Promise.all([
         fetch("/api/products?forOptions=1", { cache: "no-store" }),
-        fetch("/api/variants?search=", { cache: "no-store" }),
+        fetch("/api/variants?forOptions=1", { cache: "no-store" }),
       ]);
 
       if (!productsResponse.ok || !variantsResponse.ok) {
@@ -409,7 +409,7 @@ export default function ProductsPage() {
 
     Promise.all([
       fetch("/api/products?forOptions=1", { cache: "no-store" }),
-      fetch("/api/variants?search=", { cache: "no-store" }),
+      fetch("/api/variants?forOptions=1", { cache: "no-store" }),
     ])
       .then(async ([productsResponse, variantsResponse]) => {
         if (!productsResponse.ok || !variantsResponse.ok) {

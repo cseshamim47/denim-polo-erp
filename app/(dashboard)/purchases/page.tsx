@@ -91,6 +91,8 @@ type PurchasePagination = {
   totalPages: number;
 };
 
+const INITIAL_HISTORY_PAGE_SIZE = 20;
+
 type PurchasePayload = {
   purchaseDate: string;
   subtotal: number;
@@ -208,7 +210,7 @@ export default function NewPurchasePage() {
     useState<PurchasePagination>({
       total: 0,
       page: 1,
-      pageSize: 20,
+      pageSize: INITIAL_HISTORY_PAGE_SIZE,
       totalPages: 1,
     });
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
@@ -231,12 +233,10 @@ export default function NewPurchasePage() {
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const [productsResponse, variantsResponse, purchasesResponse] =
-          await Promise.all([
-            fetch("/api/products", { cache: "no-store" }),
-            fetch("/api/variants", { cache: "no-store" }),
-            fetch("/api/purchases", { cache: "no-store" }),
-          ]);
+        const [productsResponse, variantsResponse] = await Promise.all([
+          fetch("/api/products?forOptions=1", { cache: "no-store" }),
+          fetch("/api/variants?forOptions=1", { cache: "no-store" }),
+        ]);
 
         const productsPayload = await readJsonResponse<{
           products?: Product[];
@@ -244,28 +244,34 @@ export default function NewPurchasePage() {
         const variantsPayload = await readJsonResponse<{
           variants?: Variant[];
         }>(variantsResponse);
-        const purchasesPayload = await readJsonResponse<{
-          purchases?: PurchaseHistoryRecord[];
-          pagination?: PurchasePagination;
-        }>(purchasesResponse);
-
-        if (
-          !productsResponse.ok ||
-          !variantsResponse.ok ||
-          !purchasesResponse.ok
-        ) {
+        if (!productsResponse.ok || !variantsResponse.ok) {
           setError("Unable to load purchase catalog right now.");
           return;
         }
 
         setProducts(productsPayload?.products ?? []);
         setVariants(variantsPayload?.variants ?? []);
+
+        const purchasesResponse = await fetch(
+          `/api/purchases?page=1&pageSize=${INITIAL_HISTORY_PAGE_SIZE}`,
+          { cache: "no-store" },
+        );
+        const purchasesPayload = await readJsonResponse<{
+          purchases?: PurchaseHistoryRecord[];
+          pagination?: PurchasePagination;
+        }>(purchasesResponse);
+
+        if (!purchasesResponse.ok) {
+          setError("Unable to load purchase history right now.");
+          return;
+        }
+
         setPurchaseHistory(purchasesPayload?.purchases ?? []);
         setHistoryPagination(
           purchasesPayload?.pagination ?? {
             total: purchasesPayload?.purchases?.length ?? 0,
             page: 1,
-            pageSize: 20,
+            pageSize: INITIAL_HISTORY_PAGE_SIZE,
             totalPages: 1,
           },
         );

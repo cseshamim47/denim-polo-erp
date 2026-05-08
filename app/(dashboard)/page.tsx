@@ -1,33 +1,5 @@
-"use client";
-
-import { useEffect, useState } from "react";
-
-type DashboardResponse = {
-  summary: {
-    currentBalance: number;
-    todayProfit: number;
-    monthProfit: number;
-    lowStockCount: number;
-    pendingExpenseCount: number;
-  };
-  capital: {
-    totalInvested: number;
-    distributableProfit: number;
-    partnerShares: Array<{
-      partnerId: string;
-      partnerName: string;
-      totalInvestment: number;
-      profitSharePercent: number;
-      profitShareAmount: number;
-    }>;
-  };
-  trend: Array<{
-    date: string;
-    salesTotal: number;
-    expenseTotal: number;
-    profit: number;
-  }>;
-};
+import { getRequiredSession } from "@/lib/auth";
+import { getDashboardData } from "@/lib/server/dashboard";
 
 function currency(value: number) {
   return new Intl.NumberFormat("en-BD", {
@@ -37,33 +9,28 @@ function currency(value: number) {
   }).format(value);
 }
 
-export default function DashboardPage() {
-  const [data, setData] = useState<DashboardResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export default async function DashboardPage() {
+  const session = await getRequiredSession(["partner"]);
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const response = await fetch("/api/dashboard", { cache: "no-store" });
-        const payload = (await response.json()) as
-          | DashboardResponse
-          | { error?: string };
+  if (!session) {
+    return (
+      <div className="rounded-[1.7rem] border border-[var(--stroke-soft)] bg-white/80 p-5 text-sm text-[var(--danger)]">
+        Unable to load dashboard right now.
+      </div>
+    );
+  }
 
-        if (!response.ok || !("summary" in payload)) {
-          setError("Unable to load dashboard right now.");
-          return;
-        }
+  const data = await getDashboardData().catch(() => null);
 
-        setData(payload);
-      } catch {
-        setError("Unable to load dashboard right now.");
-      }
-    }
+  if (!data) {
+    return (
+      <div className="rounded-[1.7rem] border border-[var(--stroke-soft)] bg-white/80 p-5 text-sm text-[var(--danger)]">
+        Unable to load dashboard right now.
+      </div>
+    );
+  }
 
-    void loadDashboard();
-  }, []);
-
-  const latestTrend = data?.trend.slice(-7) ?? [];
+  const latestTrend = data.trend.slice(-7);
   const peakProfit = Math.max(...latestTrend.map((entry) => entry.profit), 1);
 
   return (
@@ -111,23 +78,23 @@ export default function DashboardPage() {
         {[
           {
             label: "Balance in hand",
-            value: currency(data?.summary.currentBalance ?? 0),
+            value: currency(data.summary.currentBalance),
           },
           {
             label: "Today profit",
-            value: currency(data?.summary.todayProfit ?? 0),
+            value: currency(data.summary.todayProfit),
           },
           {
             label: "Month profit",
-            value: currency(data?.summary.monthProfit ?? 0),
+            value: currency(data.summary.monthProfit),
           },
           {
             label: "Low-stock variants",
-            value: String(data?.summary.lowStockCount ?? 0),
+            value: String(data.summary.lowStockCount),
           },
           {
             label: "Pending expenses",
-            value: String(data?.summary.pendingExpenseCount ?? 0),
+            value: String(data.summary.pendingExpenseCount),
           },
         ].map((card) => (
           <div
@@ -149,16 +116,15 @@ export default function DashboardPage() {
               Partner capital and profit share
             </p>
             <h3 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
-              {currency(data?.capital.totalInvested ?? 0)} invested total
+              {currency(data.capital.totalInvested)} invested total
             </h3>
           </div>
           <p className="text-sm text-[var(--text-secondary)]">
-            Shareable month profit:{" "}
-            {currency(data?.capital.distributableProfit ?? 0)}
+            Shareable month profit: {currency(data.capital.distributableProfit)}
           </p>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {(data?.capital.partnerShares ?? []).map((share) => (
+          {data.capital.partnerShares.map((share) => (
             <div
               key={share.partnerId}
               className="rounded-[1.3rem] border border-[var(--stroke-soft)] p-4"
@@ -179,12 +145,6 @@ export default function DashboardPage() {
           ))}
         </div>
       </section>
-
-      {error ? (
-        <div className="rounded-[1.7rem] border border-[var(--stroke-soft)] bg-white/80 p-5 text-sm text-[var(--danger)]">
-          {error}
-        </div>
-      ) : null}
     </div>
   );
 }

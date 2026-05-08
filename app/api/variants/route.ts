@@ -170,6 +170,7 @@ export async function GET(request: Request) {
   await connectToDatabase();
 
   const { searchParams } = new URL(request.url);
+  const forOptions = searchParams.get("forOptions") === "1";
   const productId = searchParams.get("productId")?.trim();
   const search = searchParams.get("search")?.trim().toUpperCase();
   const stock = searchParams.get("stock");
@@ -202,6 +203,34 @@ export async function GET(request: Request) {
 
   if (stock === "zero-stock") {
     query.stockQty = { $lte: 0 };
+  }
+
+  if (forOptions) {
+    const variants = await VariantModel.find(query)
+      .select({
+        productId: 1,
+        sku: 1,
+        color: 1,
+        size: 1,
+        stockQty: 1,
+        avgCost: 1,
+        sellingPrice: 1,
+      })
+      .sort({ sku: 1 })
+      .lean();
+
+    return NextResponse.json({
+      variants: variants.map((variant) => ({
+        id: variant._id.toString(),
+        productId: variant.productId.toString(),
+        sku: variant.sku,
+        color: variant.color,
+        size: variant.size,
+        stockQty: variant.stockQty,
+        avgCost: decimalToNumber(variant.avgCost),
+        sellingPrice: decimalToNumber(variant.sellingPrice),
+      })),
+    });
   }
 
   const [variants, partners] = await Promise.all([
