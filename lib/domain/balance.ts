@@ -28,6 +28,7 @@ export function calculateCurrentBalance(input: {
   completedSalesTotal: number;
   customerRefundTotal: number;
   purchaseTotal: number;
+  approvedAssetTotal: number;
   approvedExpenseTotal: number;
 }) {
   return (
@@ -35,6 +36,7 @@ export function calculateCurrentBalance(input: {
     input.completedSalesTotal -
     input.customerRefundTotal -
     input.purchaseTotal -
+    input.approvedAssetTotal -
     input.approvedExpenseTotal
   );
 }

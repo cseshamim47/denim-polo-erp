@@ -40,8 +40,9 @@ describe("balance helpers", () => {
         completedSalesTotal: 6500,
         customerRefundTotal: 500,
         purchaseTotal: 4200,
+        approvedAssetTotal: 700,
         approvedExpenseTotal: 800,
       }),
-    ).toBe(11000);
+    ).toBe(10300);
   });
 });

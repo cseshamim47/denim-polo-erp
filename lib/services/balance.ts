@@ -1,6 +1,7 @@
 import { calculateCurrentBalance, calculateCustomerRefundTotal } from "@/lib/domain/balance";
 import { connectToDatabase } from "@/lib/db";
 import { decimalToNumber } from "@/lib/money";
+import AssetModel from "@/models/Asset";
 import ExpenseModel from "@/models/Expense";
 import InvestmentModel from "@/models/Investment";
 import PurchaseModel from "@/models/Purchase";
@@ -9,12 +10,13 @@ import SaleModel from "@/models/Sale";
 export async function getCurrentBalanceSnapshot() {
   await connectToDatabase();
 
-  const [approvedInvestments, completedSales, approvedExpenses, purchases] =
+  const [approvedInvestments, completedSales, approvedExpenses, purchases, approvedAssets] =
     await Promise.all([
       InvestmentModel.find({ status: "approved" }).lean(),
       SaleModel.find({ status: "completed" }).lean(),
       ExpenseModel.find({ status: "approved" }).lean(),
       PurchaseModel.find({ status: "approved" }).lean(),
+      AssetModel.find({ status: "approved" }).lean(),
     ]);
 
   const approvedInvestmentTotal = approvedInvestments.reduce(
@@ -35,6 +37,10 @@ export async function getCurrentBalanceSnapshot() {
     (sum, expense) => sum + decimalToNumber(expense.amount),
     0,
   );
+  const approvedAssetTotal = approvedAssets.reduce(
+    (sum, asset) => sum + decimalToNumber(asset.amount),
+    0,
+  );
 
   return {
     currentBalance: calculateCurrentBalance({
@@ -42,6 +48,7 @@ export async function getCurrentBalanceSnapshot() {
       completedSalesTotal,
       customerRefundTotal,
       purchaseTotal,
+      approvedAssetTotal,
       approvedExpenseTotal,
     }),
     breakdown: {
@@ -49,6 +56,7 @@ export async function getCurrentBalanceSnapshot() {
       completedSalesTotal,
       customerRefundTotal,
       purchaseTotal,
+      approvedAssetTotal,
       approvedExpenseTotal,
     },
   };

@@ -7,6 +7,7 @@ const partnerOnlyPrefixes = [
   "/purchases",
   "/expenses",
   "/investments",
+  "/assets",
   "/returns",
   "/reports",
   "/api/purchases",
@@ -14,6 +15,7 @@ const partnerOnlyPrefixes = [
   "/api/returns",
   "/api/dashboard",
   "/api/investments",
+  "/api/assets",
   "/api/uploadthing",
 ];
 
@@ -72,6 +74,7 @@ export const config = {
     "/purchases/:path*",
     "/expenses/:path*",
     "/investments/:path*",
+    "/assets/:path*",
     "/returns/:path*",
     "/reports/:path*",
     "/api/:path*",
