@@ -1,10 +1,10 @@
-import { Types } from "mongoose";
+import { HydratedDocument, Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import { buildSaleLineSnapshot } from "@/lib/domain/stock-calculations";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import ProductModel from "@/models/Product";
-import SaleModel from "@/models/Sale";
+import SaleModel, { type Sale } from "@/models/Sale";
 import VariantModel from "@/models/Variant";
 
 function buildSaleNumber() {
@@ -22,7 +22,7 @@ export async function createSale(input: {
     qty: number;
     sellingPrice?: number;
   }>;
-}): Promise<any> {
+}): Promise<HydratedDocument<Sale>> {
   await connectToDatabase();
 
   const saleItems = [];

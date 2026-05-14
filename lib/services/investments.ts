@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { HydratedDocument, Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import {
@@ -6,7 +6,7 @@ import {
   evaluateInvestmentDecision,
 } from "@/lib/domain/investment-approval";
 import { toDecimal128 } from "@/lib/money";
-import InvestmentModel from "@/models/Investment";
+import InvestmentModel, { type Investment } from "@/models/Investment";
 import UserModel from "@/models/User";
 
 export async function createInvestment(input: {
@@ -14,7 +14,7 @@ export async function createInvestment(input: {
   investedAt: Date;
   note?: string;
   submittedBy: string;
-}): Promise<any> {
+}): Promise<HydratedDocument<Investment>> {
   await connectToDatabase();
 
   const activePartners = await UserModel.find({
@@ -52,7 +52,7 @@ export async function reviewInvestment(input: {
   partnerId: string;
   decision: "approved" | "rejected";
   comment?: string;
-}): Promise<any> {
+}): Promise<HydratedDocument<Investment>> {
   await connectToDatabase();
 
   const investment = await InvestmentModel.findById(input.investmentId);

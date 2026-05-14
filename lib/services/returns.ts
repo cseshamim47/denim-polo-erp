@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { HydratedDocument, Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import {
@@ -6,7 +6,7 @@ import {
   applyDamagedReturn,
 } from "@/lib/domain/stock-calculations";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
-import ReturnModel from "@/models/Return";
+import ReturnModel, { type ReturnRecord } from "@/models/Return";
 import SaleModel from "@/models/Sale";
 import VariantModel from "@/models/Variant";
 
@@ -18,7 +18,7 @@ export async function createReturn(input: {
   note?: string;
   processedBy: string;
   returnDate: Date;
-}): Promise<any> {
+}): Promise<HydratedDocument<ReturnRecord>> {
   await connectToDatabase();
 
   const sale = await SaleModel.findById(input.saleId);
