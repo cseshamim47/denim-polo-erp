@@ -33,6 +33,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  buildExpenseRequest,
+  formatDateInputValue,
+} from "@/lib/domain/expense-form";
 
 type ExpenseRecord = {
   id: string;
@@ -123,6 +127,7 @@ export default function ExpensesPage() {
   const [form, setForm] = useState({
     title: "",
     amount: 0,
+    expenseDate: formatDateInputValue(new Date()),
     note: "",
   });
   const [titleSearch, setTitleSearch] = useState("");
@@ -247,12 +252,7 @@ export default function ExpensesPage() {
     const response = await fetch("/api/expenses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        title: form.title.trim(),
-        note: form.note.trim(),
-        expenseDate: new Date().toISOString(),
-      }),
+      body: JSON.stringify(buildExpenseRequest(form)),
     });
 
     const payload = await readJsonResponse<{
@@ -267,7 +267,12 @@ export default function ExpensesPage() {
       return;
     }
 
-    setForm({ title: "", amount: 0, note: "" });
+    setForm({
+      title: "",
+      amount: 0,
+      expenseDate: formatDateInputValue(new Date()),
+      note: "",
+    });
     setFieldErrors({});
     toast.success(`Expense sent: ${payload?.expenseId}`);
     await load({ ...filters, page: 1 });
@@ -423,6 +428,20 @@ export default function ExpensesPage() {
                   {fieldErrors.amount}
                 </p>
               ) : null}
+            </div>
+
+            <div>
+              <input
+                className="field"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    expenseDate: event.target.value,
+                  }))
+                }
+                type="date"
+                value={form.expenseDate}
+              />
             </div>
 
             <div>
