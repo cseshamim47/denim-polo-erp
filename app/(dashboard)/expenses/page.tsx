@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { ChevronsUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
+import { ApprovalSelectionBar } from "@/components/approval/approval-selection-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -33,6 +35,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { applyReviewUpdates } from "@/lib/domain/approval-client";
+import type { ApprovalReviewUpdate } from "@/lib/services/approval-review";
 import {
   buildExpenseRequest,
   formatDateInputValue,
@@ -112,6 +116,29 @@ function getExpenseStatusClassName(status: ExpenseRecord["status"]) {
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function buildExpenseQuery(filters: {
+  page: number;
+  scope: string;
+  owner: string;
+  status: string;
+  from: string;
+  to: string;
+  needsReview: boolean;
+}) {
+  const params = new URLSearchParams();
+  params.set("page", String(filters.page));
+  params.set("pageSize", "10");
+
+  if (filters.scope !== "all") params.set("scope", filters.scope);
+  if (filters.owner) params.set("owner", filters.owner);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.needsReview) params.set("needsReview", "true");
+
+  return params.toString();
+}
+
 export default function ExpensesPage() {
   const [data, setData] = useState<ExpensesResponse | null>(null);
   const [fieldErrors, setFieldErrors] = useState<ExpenseFieldErrors>({});
@@ -123,6 +150,7 @@ export default function ExpensesPage() {
     status: "",
     from: "",
     to: "",
+    needsReview: false,
   });
   const [form, setForm] = useState({
     title: "",
@@ -131,6 +159,8 @@ export default function ExpensesPage() {
     note: "",
   });
   const [titleSearch, setTitleSearch] = useState("");
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [selectedNote, setSelectedNote] = useState<{
     title: string;
     note: string;
@@ -168,17 +198,7 @@ export default function ExpensesPage() {
   }
 
   async function load(nextFilters = filters) {
-    const params = new URLSearchParams();
-    params.set("page", String(nextFilters.page));
-    params.set("pageSize", "10");
-
-    if (nextFilters.scope !== "all") params.set("scope", nextFilters.scope);
-    if (nextFilters.owner) params.set("owner", nextFilters.owner);
-    if (nextFilters.status) params.set("status", nextFilters.status);
-    if (nextFilters.from) params.set("from", nextFilters.from);
-    if (nextFilters.to) params.set("to", nextFilters.to);
-
-    const response = await fetch(`/api/expenses?${params.toString()}`, {
+    const response = await fetch(`/api/expenses?${buildExpenseQuery(nextFilters)}`, {
       cache: "no-store",
     });
 
@@ -195,16 +215,13 @@ export default function ExpensesPage() {
     }
 
     setData(payload);
+    setSelectedExpenseIds([]);
   }
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    params.set("page", "1");
-    params.set("pageSize", "10");
-
     let cancelled = false;
 
-    fetch(`/api/expenses?${params.toString()}`, { cache: "no-store" })
+    fetch(`/api/expenses?${buildExpenseQuery(filters)}`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) {
           if (!cancelled) {
@@ -224,6 +241,7 @@ export default function ExpensesPage() {
 
         if (!cancelled) {
           setData(payload);
+          setSelectedExpenseIds([]);
         }
       })
       .catch(() => {
@@ -235,7 +253,102 @@ export default function ExpensesPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters]);
+
+  function applyExpenseReviews(reviews: ApprovalReviewUpdate[]) {
+    setData((current) => {
+      if (!current || reviews.length === 0) {
+        return current;
+      }
+
+      const patchedExpenses = applyReviewUpdates(current.expenses, reviews);
+      const visibleExpenses = filters.needsReview
+        ? patchedExpenses.filter((expense) => expense.canReview)
+        : patchedExpenses;
+      const removedCount = filters.needsReview ? reviews.length : 0;
+      const totalCount = Math.max(
+        0,
+        current.pagination.totalCount - removedCount,
+      );
+
+      return {
+        ...current,
+        expenses: visibleExpenses,
+        pagination: {
+          ...current.pagination,
+          totalCount,
+          totalPages: Math.max(Math.ceil(totalCount / current.pagination.pageSize), 1),
+        },
+      };
+    });
+
+    setSelectedExpenseIds((current) =>
+      current.filter(
+        (expenseId) => !reviews.some((review) => review.id === expenseId),
+      ),
+    );
+  }
+
+  function toggleExpenseSelection(expenseId: string, checked: boolean) {
+    setSelectedExpenseIds((current) => {
+      if (checked) {
+        return current.includes(expenseId) ? current : [...current, expenseId];
+      }
+
+      return current.filter((id) => id !== expenseId);
+    });
+  }
+
+  function toggleAllVisibleExpenses() {
+    const visibleReviewableIds = (data?.expenses ?? [])
+      .filter((expense) => expense.canReview)
+      .map((expense) => expense.id);
+
+    setSelectedExpenseIds((current) => {
+      const allSelected =
+        visibleReviewableIds.length > 0 &&
+        visibleReviewableIds.every((expenseId) => current.includes(expenseId));
+
+      if (allSelected) {
+        return current.filter((id) => !visibleReviewableIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleReviewableIds]));
+    });
+  }
+
+  async function submitExpenseReview(
+    payload:
+      | { expenseId: string; decision: "approved" | "rejected" }
+      | { expenseIds: string[]; decision: "approved" },
+    loadingMessage: string,
+    successMessage: string,
+  ) {
+    setIsReviewSubmitting(true);
+    const loadingToastId = toast.loading(loadingMessage);
+
+    const response = await fetch("/api/expenses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await readJsonResponse<{
+      error?: string;
+      reviews?: ApprovalReviewUpdate[];
+    }>(response);
+
+    toast.dismiss(loadingToastId);
+    setIsReviewSubmitting(false);
+
+    if (!response.ok) {
+      toast.error(result?.error ?? "Review failed.");
+      return;
+    }
+
+    applyExpenseReviews(result?.reviews ?? []);
+    toast.success(successMessage);
+  }
 
   async function submitExpense() {
     const nextFieldErrors = validateExpenseForm();
@@ -282,28 +395,33 @@ export default function ExpensesPage() {
     expenseId: string,
     decision: "approved" | "rejected",
   ) {
-    const loadingToastId = toast.loading(
+    await submitExpenseReview(
+      { expenseId, decision },
       `${decision === "approved" ? "Approving" : "Rejecting"} expense...`,
+      `Expense ${decision}.`,
     );
+  }
 
-    const response = await fetch("/api/expenses", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expenseId, decision }),
-    });
-
-    const payload = await readJsonResponse<{ error?: string }>(response);
-
-    toast.dismiss(loadingToastId);
-
-    if (!response.ok) {
-      toast.error(payload?.error ?? "Review failed.");
+  async function approveSelectedExpenses() {
+    if (selectedExpenseIds.length === 0) {
       return;
     }
 
-    toast.success(`Expense ${decision}.`);
-    await load(filters);
+    await submitExpenseReview(
+      { expenseIds: selectedExpenseIds, decision: "approved" },
+      "Approving selected expenses...",
+      `${selectedExpenseIds.length} expense(s) approved.`,
+    );
   }
+
+  const reviewableExpenseIds = (data?.expenses ?? [])
+    .filter((expense) => expense.canReview)
+    .map((expense) => expense.id);
+  const allVisibleExpensesSelected =
+    reviewableExpenseIds.length > 0 &&
+    reviewableExpenseIds.every((expenseId) =>
+      selectedExpenseIds.includes(expenseId),
+    );
 
   return (
     <div className="space-y-6">
@@ -476,6 +594,44 @@ export default function ExpensesPage() {
 
         <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
           <h3 className="text-xl font-semibold tracking-tight">Filters</h3>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={filters.needsReview ? "outline" : "default"}
+              className={
+                filters.needsReview
+                  ? "border-amber-200 bg-white text-foreground"
+                  : "bg-foreground text-white"
+              }
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  needsReview: false,
+                  page: 1,
+                }))
+              }
+            >
+              All expenses
+            </Button>
+            <Button
+              type="button"
+              variant={filters.needsReview ? "default" : "outline"}
+              className={
+                filters.needsReview
+                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                  : "border-amber-200 bg-white text-foreground"
+              }
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  needsReview: true,
+                  page: 1,
+                }))
+              }
+            >
+              Needs my approval
+            </Button>
+          </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Popover
               open={openField === "filter-scope"}
@@ -680,7 +836,7 @@ export default function ExpensesPage() {
               onClick={() => void load(filters)}
               type="button"
             >
-              Apply filters
+              Refresh
             </button>
             <button
               className="btn-secondary w-full sm:w-auto"
@@ -692,9 +848,9 @@ export default function ExpensesPage() {
                   status: "",
                   from: "",
                   to: "",
+                  needsReview: false,
                 };
                 setFilters(reset);
-                void load(reset);
               }}
               type="button"
             >
@@ -713,6 +869,17 @@ export default function ExpensesPage() {
             {data?.pagination.totalCount ?? 0} record(s)
           </p>
         </div>
+        <ApprovalSelectionBar
+          selectedCount={selectedExpenseIds.length}
+          selectableCount={reviewableExpenseIds.length}
+          onApproveSelected={() => {
+            void approveSelectedExpenses();
+          }}
+          onToggleAll={toggleAllVisibleExpenses}
+          allSelected={allVisibleExpensesSelected}
+          isBusy={isReviewSubmitting}
+          label="expense(s)"
+        />
         <div className="mt-4 grid gap-4 md:hidden">
           {(data?.expenses ?? []).length > 0 ? (
             (data?.expenses ?? []).map((expense) => (
@@ -722,7 +889,19 @@ export default function ExpensesPage() {
               >
                 <CardHeader className="px-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
+                    <div className="flex items-start gap-3">
+                      {expense.canReview ? (
+                        <Checkbox
+                          checked={selectedExpenseIds.includes(expense.id)}
+                          onCheckedChange={(checked) =>
+                            toggleExpenseSelection(expense.id, checked === true)
+                          }
+                          aria-label={`Select ${expense.title}`}
+                        />
+                      ) : (
+                        <div className="size-4 shrink-0" />
+                      )}
+                      <div className="space-y-1">
                       <CardTitle className="text-base">
                         {expense.title}
                       </CardTitle>
@@ -732,6 +911,7 @@ export default function ExpensesPage() {
                           "en-BD",
                         )}
                       </CardDescription>
+                      </div>
                     </div>
                     <Badge
                       variant="outline"
@@ -814,6 +994,7 @@ export default function ExpensesPage() {
                       <Button
                         size="sm"
                         className="w-full"
+                        disabled={isReviewSubmitting}
                         onClick={() =>
                           void reviewExpense(expense.id, "approved")
                         }
@@ -824,6 +1005,7 @@ export default function ExpensesPage() {
                         variant="destructive"
                         size="sm"
                         className="w-full"
+                        disabled={isReviewSubmitting}
                         onClick={() =>
                           void reviewExpense(expense.id, "rejected")
                         }
@@ -851,6 +1033,14 @@ export default function ExpensesPage() {
           <table className="w-full min-w-240 text-sm">
             <thead className="bg-(--surface-accent-soft)">
               <tr>
+                <th className="px-3 py-2 text-center font-semibold">
+                  <Checkbox
+                    checked={allVisibleExpensesSelected}
+                    onCheckedChange={() => toggleAllVisibleExpenses()}
+                    aria-label="Select all visible expenses"
+                    disabled={reviewableExpenseIds.length === 0}
+                  />
+                </th>
                 <th className="px-3 py-2 text-left font-semibold">Title</th>
                 <th className="px-3 py-2 text-left font-semibold">Owner</th>
                 <th className="px-3 py-2 text-left font-semibold">
@@ -867,6 +1057,17 @@ export default function ExpensesPage() {
             <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
               {(data?.expenses ?? []).map((expense) => (
                 <tr key={expense.id} className="align-top">
+                  <td className="px-3 py-3 text-center">
+                    {expense.canReview ? (
+                      <Checkbox
+                        checked={selectedExpenseIds.includes(expense.id)}
+                        onCheckedChange={(checked) =>
+                          toggleExpenseSelection(expense.id, checked === true)
+                        }
+                        aria-label={`Select ${expense.title}`}
+                      />
+                    ) : null}
+                  </td>
                   <td className="px-3 py-3 font-medium text-foreground">
                     {expense.title}
                   </td>
@@ -931,6 +1132,7 @@ export default function ExpensesPage() {
                       <div className="flex justify-center gap-2">
                         <Button
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() =>
                             void reviewExpense(expense.id, "approved")
                           }
@@ -940,6 +1142,7 @@ export default function ExpensesPage() {
                         <Button
                           variant="destructive"
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() =>
                             void reviewExpense(expense.id, "rejected")
                           }
@@ -965,7 +1168,6 @@ export default function ExpensesPage() {
             onClick={() => {
               const next = { ...filters, page: Math.max(filters.page - 1, 1) };
               setFilters(next);
-              void load(next);
             }}
             type="button"
           >
@@ -983,7 +1185,6 @@ export default function ExpensesPage() {
             onClick={() => {
               const next = { ...filters, page: filters.page + 1 };
               setFilters(next);
-              void load(next);
             }}
             type="button"
           >

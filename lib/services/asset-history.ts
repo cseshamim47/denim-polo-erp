@@ -16,6 +16,7 @@ export interface ListAssetHistoryInput {
   category?: string | null;
   from?: string | null;
   to?: string | null;
+  needsReview?: boolean;
 }
 
 function toIsoDate(
@@ -120,7 +121,14 @@ export async function listAssetHistory(input: ListAssetHistoryInput) {
     query.submittedBy = { $ne: actorId };
   }
 
-  if (status && ["pending", "approved", "rejected"].includes(status)) {
+  if (input.needsReview) {
+    query.status = "pending";
+    query.submittedBy = { $ne: actorId };
+    query.requiredApproverIdsSnapshot = actorId;
+    query.approvals = {
+      $not: { $elemMatch: { partnerId: actorId } },
+    };
+  } else if (status && ["pending", "approved", "rejected"].includes(status)) {
     query.status = status as AssetStatus;
   }
 

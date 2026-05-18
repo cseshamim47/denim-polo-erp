@@ -58,6 +58,7 @@ export type AssetFiltersState = {
   category: string;
   from: string;
   to: string;
+  needsReview: boolean;
 };
 
 export const assetScopeOptions = [

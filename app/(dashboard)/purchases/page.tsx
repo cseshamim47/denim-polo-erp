@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { toast } from "sonner";
 import { ChevronsUpDownIcon } from "lucide-react";
+import { ApprovalSelectionBar } from "@/components/approval/approval-selection-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -27,6 +29,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { applyReviewUpdates } from "@/lib/domain/approval-client";
+import type { ApprovalReviewUpdate } from "@/lib/services/approval-review";
 
 type Product = {
   id: string;
@@ -203,9 +207,11 @@ export default function NewPurchasePage() {
   const [historySearch, setHistorySearch] = useState("");
   const [historyFromDate, setHistoryFromDate] = useState("");
   const [historyToDate, setHistoryToDate] = useState("");
+  const [historyNeedsReview, setHistoryNeedsReview] = useState(false);
   const [purchaseHistory, setPurchaseHistory] = useState<
     PurchaseHistoryRecord[]
   >([]);
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<string[]>([]);
   const [historyPagination, setHistoryPagination] =
     useState<PurchasePagination>({
       total: 0,
@@ -215,6 +221,7 @@ export default function NewPurchasePage() {
     });
   const [isCatalogLoading, setIsCatalogLoading] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
 
   function createNextItem() {
     const nextId = `item-${nextItemIdRef.current}`;
@@ -290,6 +297,7 @@ export default function NewPurchasePage() {
     from?: string;
     to?: string;
     page?: number;
+    needsReview?: boolean;
   }) {
     setIsHistoryLoading(true);
 
@@ -299,6 +307,7 @@ export default function NewPurchasePage() {
       const activeFrom = filters?.from ?? historyFromDate;
       const activeTo = filters?.to ?? historyToDate;
       const activePage = filters?.page ?? historyPagination.page;
+      const activeNeedsReview = filters?.needsReview ?? historyNeedsReview;
 
       if (activeSearch.trim()) {
         params.set("search", activeSearch.trim());
@@ -308,6 +317,9 @@ export default function NewPurchasePage() {
       }
       if (activeTo) {
         params.set("to", activeTo);
+      }
+      if (activeNeedsReview) {
+        params.set("needsReview", "true");
       }
       params.set("page", String(activePage));
       params.set("pageSize", String(historyPagination.pageSize));
@@ -326,6 +338,7 @@ export default function NewPurchasePage() {
       }
 
       setPurchaseHistory(payload?.purchases ?? []);
+      setSelectedPurchaseIds([]);
       setHistoryPagination(
         payload?.pagination ?? {
           total: payload?.purchases?.length ?? 0,
@@ -339,6 +352,92 @@ export default function NewPurchasePage() {
     } finally {
       setIsHistoryLoading(false);
     }
+  }
+
+  function applyPurchaseReviews(reviews: ApprovalReviewUpdate[]) {
+    setPurchaseHistory((current) => {
+      const patched = applyReviewUpdates(current, reviews);
+      return historyNeedsReview
+        ? patched.filter((purchase) => purchase.canReview)
+        : patched;
+    });
+    setHistoryPagination((current) => {
+      const removedCount = historyNeedsReview ? reviews.length : 0;
+      const total = Math.max(0, current.total - removedCount);
+
+      return {
+        ...current,
+        total,
+        totalPages: Math.max(Math.ceil(total / current.pageSize), 1),
+      };
+    });
+    setSelectedPurchaseIds((current) =>
+      current.filter(
+        (purchaseId) => !reviews.some((review) => review.id === purchaseId),
+      ),
+    );
+  }
+
+  function togglePurchaseSelection(purchaseId: string, checked: boolean) {
+    setSelectedPurchaseIds((current) => {
+      if (checked) {
+        return current.includes(purchaseId)
+          ? current
+          : [...current, purchaseId];
+      }
+
+      return current.filter((id) => id !== purchaseId);
+    });
+  }
+
+  function toggleAllVisiblePurchases() {
+    const visibleReviewableIds = purchaseHistory
+      .filter((purchase) => purchase.canReview)
+      .map((purchase) => purchase.id);
+
+    setSelectedPurchaseIds((current) => {
+      const allSelected =
+        visibleReviewableIds.length > 0 &&
+        visibleReviewableIds.every((purchaseId) => current.includes(purchaseId));
+
+      if (allSelected) {
+        return current.filter((id) => !visibleReviewableIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleReviewableIds]));
+    });
+  }
+
+  async function submitPurchaseReview(
+    payload:
+      | { purchaseId: string; decision: "approved" | "rejected" }
+      | { purchaseIds: string[]; decision: "approved" },
+    loadingMessage: string,
+    successMessage: string,
+  ) {
+    setIsReviewSubmitting(true);
+    const loadingToastId = toast.loading(loadingMessage);
+
+    const response = await fetch("/api/purchases", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await readJsonResponse<{
+      error?: string;
+      reviews?: ApprovalReviewUpdate[];
+    }>(response);
+
+    toast.dismiss(loadingToastId);
+    setIsReviewSubmitting(false);
+
+    if (!response.ok) {
+      setError(result?.error ?? "Review failed.");
+      return;
+    }
+
+    applyPurchaseReviews(result?.reviews ?? []);
+    setSuccess(successMessage);
   }
 
   const subtotal = items.reduce(
@@ -534,21 +633,23 @@ export default function NewPurchasePage() {
     purchaseId: string,
     decision: "approved" | "rejected",
   ) {
-    const response = await fetch("/api/purchases", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ purchaseId, decision }),
-    });
+    await submitPurchaseReview(
+      { purchaseId, decision },
+      `${decision === "approved" ? "Approving" : "Rejecting"} purchase...`,
+      `Purchase ${decision}.`,
+    );
+  }
 
-    const payload = await readJsonResponse<{ error?: unknown }>(response);
-
-    if (!response.ok) {
-      setError(getErrorMessage(payload?.error));
+  async function approveSelectedPurchases() {
+    if (selectedPurchaseIds.length === 0) {
       return;
     }
 
-    setSuccess(`Purchase ${decision}.`);
-    await loadHistory();
+    await submitPurchaseReview(
+      { purchaseIds: selectedPurchaseIds, decision: "approved" },
+      "Approving selected purchases...",
+      `${selectedPurchaseIds.length} purchase(s) approved.`,
+    );
   }
 
   const historyStart =
@@ -562,6 +663,14 @@ export default function NewPurchasePage() {
           historyPagination.total,
           historyPagination.page * historyPagination.pageSize,
         );
+  const reviewablePurchaseIds = purchaseHistory
+    .filter((purchase) => purchase.canReview)
+    .map((purchase) => purchase.id);
+  const allVisiblePurchasesSelected =
+    reviewablePurchaseIds.length > 0 &&
+    reviewablePurchaseIds.every((purchaseId) =>
+      selectedPurchaseIds.includes(purchaseId),
+    );
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
@@ -1108,8 +1217,45 @@ export default function NewPurchasePage() {
             Refresh
           </button>
         </div>
+        <ApprovalSelectionBar
+          selectedCount={selectedPurchaseIds.length}
+          selectableCount={reviewablePurchaseIds.length}
+          onApproveSelected={() => {
+            void approveSelectedPurchases();
+          }}
+          onToggleAll={toggleAllVisiblePurchases}
+          allSelected={allVisiblePurchasesSelected}
+          isBusy={isReviewSubmitting}
+          label="purchase(s)"
+        />
 
         <div className="mt-5 grid gap-3 rounded-[1.2rem] bg-(--surface-accent-soft) p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+            <Button
+              type="button"
+              variant={historyNeedsReview ? "outline" : "default"}
+              className={
+                historyNeedsReview
+                  ? "border-amber-200 bg-white text-foreground"
+                  : "bg-foreground text-white"
+              }
+              onClick={() => setHistoryNeedsReview(false)}
+            >
+              All purchases
+            </Button>
+            <Button
+              type="button"
+              variant={historyNeedsReview ? "default" : "outline"}
+              className={
+                historyNeedsReview
+                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                  : "border-amber-200 bg-white text-foreground"
+              }
+              onClick={() => setHistoryNeedsReview(true)}
+            >
+              Needs my approval
+            </Button>
+          </div>
           <label className="grid gap-1.5 text-sm font-medium text-foreground sm:col-span-2 lg:col-span-1">
             Search
             <input
@@ -1140,7 +1286,9 @@ export default function NewPurchasePage() {
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-1">
             <button
               className="btn-primary w-full"
-              onClick={() => void loadHistory({ page: 1 })}
+              onClick={() =>
+                void loadHistory({ page: 1, needsReview: historyNeedsReview })
+              }
               type="button"
             >
               Apply filter
@@ -1151,7 +1299,14 @@ export default function NewPurchasePage() {
                 setHistorySearch("");
                 setHistoryFromDate("");
                 setHistoryToDate("");
-                void loadHistory({ search: "", from: "", to: "", page: 1 });
+                setHistoryNeedsReview(false);
+                void loadHistory({
+                  search: "",
+                  from: "",
+                  to: "",
+                  page: 1,
+                  needsReview: false,
+                });
               }}
               type="button"
             >
@@ -1181,7 +1336,19 @@ export default function NewPurchasePage() {
               >
                 <CardHeader className="px-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="flex items-start gap-3">
+                      {record.canReview ? (
+                        <Checkbox
+                          checked={selectedPurchaseIds.includes(record.id)}
+                          onCheckedChange={(checked) =>
+                            togglePurchaseSelection(record.id, checked === true)
+                          }
+                          aria-label={`Select ${record.sku}`}
+                        />
+                      ) : (
+                        <div className="size-4 shrink-0" />
+                      )}
+                      <div>
                       <CardTitle className="text-base">{record.sku}</CardTitle>
                       <p className="mt-1 text-sm text-(--text-secondary)">
                         {record.productName} · {record.size} / {record.color}
@@ -1189,6 +1356,7 @@ export default function NewPurchasePage() {
                       <p className="mt-1 text-xs text-(--text-secondary)">
                         Submitted by {record.createdByName}
                       </p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-foreground">
@@ -1272,6 +1440,7 @@ export default function NewPurchasePage() {
                         <Button
                           className="w-full"
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() =>
                             void reviewPurchase(record.id, "approved")
                           }
@@ -1283,6 +1452,7 @@ export default function NewPurchasePage() {
                           className="w-full"
                           variant="destructive"
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() =>
                             void reviewPurchase(record.id, "rejected")
                           }
@@ -1307,6 +1477,14 @@ export default function NewPurchasePage() {
           <table className="w-full min-w-225 text-sm">
             <thead className="bg-(--surface-accent-soft)">
               <tr>
+                <th className="px-3 py-2 text-center font-semibold">
+                  <Checkbox
+                    checked={allVisiblePurchasesSelected}
+                    onCheckedChange={() => toggleAllVisiblePurchases()}
+                    aria-label="Select all visible purchases"
+                    disabled={reviewablePurchaseIds.length === 0}
+                  />
+                </th>
                 <th className="px-3 py-2 text-left font-semibold">Date</th>
                 <th className="px-3 py-2 text-left font-semibold">SKU</th>
                 <th className="px-3 py-2 text-left font-semibold">Product</th>
@@ -1330,7 +1508,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={12}
+                    colSpan={13}
                   >
                     <Spinner label="Loading purchase history..." />
                   </td>
@@ -1339,7 +1517,7 @@ export default function NewPurchasePage() {
                 <tr>
                   <td
                     className="px-3 py-5 text-center text-(--text-secondary)"
-                    colSpan={12}
+                    colSpan={13}
                   >
                     No purchases found for the selected filters.
                   </td>
@@ -1350,6 +1528,17 @@ export default function NewPurchasePage() {
                     key={record.id}
                     className="hover:bg-(--surface-accent-soft)/50"
                   >
+                    <td className="px-3 py-2 text-center">
+                      {record.canReview ? (
+                        <Checkbox
+                          checked={selectedPurchaseIds.includes(record.id)}
+                          onCheckedChange={(checked) =>
+                            togglePurchaseSelection(record.id, checked === true)
+                          }
+                          aria-label={`Select ${record.sku}`}
+                        />
+                      ) : null}
+                    </td>
                     <td className="px-3 py-2">
                       {new Date(record.purchaseDate).toLocaleDateString(
                         "en-BD",
@@ -1401,6 +1590,7 @@ export default function NewPurchasePage() {
                         <div className="flex justify-center gap-2">
                           <Button
                             size="sm"
+                            disabled={isReviewSubmitting}
                             onClick={() =>
                               void reviewPurchase(record.id, "approved")
                             }
@@ -1411,6 +1601,7 @@ export default function NewPurchasePage() {
                           <Button
                             variant="destructive"
                             size="sm"
+                            disabled={isReviewSubmitting}
                             onClick={() =>
                               void reviewPurchase(record.id, "rejected")
                             }
@@ -1444,6 +1635,7 @@ export default function NewPurchasePage() {
               onClick={() =>
                 void loadHistory({
                   page: Math.max(1, historyPagination.page - 1),
+                  needsReview: historyNeedsReview,
                 })
               }
               type="button"
@@ -1466,6 +1658,7 @@ export default function NewPurchasePage() {
                     historyPagination.totalPages,
                     historyPagination.page + 1,
                   ),
+                  needsReview: historyNeedsReview,
                 })
               }
               type="button"

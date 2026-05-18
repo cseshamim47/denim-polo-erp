@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
 import { listExpenseHistory } from "@/lib/services/expense-history";
-import { createExpense, reviewExpense } from "@/lib/services/expenses";
+import { createExpense, reviewExpenses } from "@/lib/services/expenses";
 
 const createExpenseSchema = z.object({
   title: z.string().trim().min(1),
@@ -12,11 +12,18 @@ const createExpenseSchema = z.object({
   expenseDate: z.coerce.date(),
 });
 
-const reviewExpenseSchema = z.object({
-  expenseId: z.string().trim().min(1),
-  decision: z.enum(["approved", "rejected"]),
-  comment: z.string().trim().optional(),
-});
+const reviewExpenseSchema = z.union([
+  z.object({
+    expenseId: z.string().trim().min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+  z.object({
+    expenseIds: z.array(z.string().trim().min(1)).min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+]);
 
 export async function GET(request: Request) {
   const session = await getRequiredSession(["partner"]);
@@ -36,6 +43,7 @@ export async function GET(request: Request) {
       status: searchParams.get("status"),
       from: searchParams.get("from"),
       to: searchParams.get("to"),
+      needsReview: searchParams.get("needsReview") === "true",
     });
 
     return NextResponse.json(history);
@@ -104,12 +112,18 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const expense = await reviewExpense({
-      ...parsed.data,
+    const expenseIds =
+      "expenseId" in parsed.data ? [parsed.data.expenseId] : parsed.data.expenseIds;
+    const reviews = await reviewExpenses({
+      expenseIds,
       partnerId: session.user.id,
+      partnerName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
+      decision: parsed.data.decision,
+      comment: parsed.data.comment,
     });
 
-    return NextResponse.json({ status: expense.status });
+    return NextResponse.json({ reviews });
   } catch (error) {
     return NextResponse.json(
       {

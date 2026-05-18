@@ -1,46 +1,9 @@
 import { NextResponse } from "next/server";
-import { Types } from "mongoose";
 import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
-import { connectToDatabase } from "@/lib/db";
-import { decimalToNumber } from "@/lib/money";
-import { getCurrentBalanceSnapshot } from "@/lib/services/balance";
-import { createInvestment, reviewInvestment } from "@/lib/services/investments";
-import InvestmentModel from "@/models/Investment";
-import UserModel from "@/models/User";
-
-function toIsoDate(
-  value: Date | null | undefined,
-  fallback: Date | null | undefined,
-) {
-  return (value ?? fallback ?? new Date(0)).toISOString();
-}
-
-function toApprovals(
-  approvals:
-    | Array<{
-        partnerId: Types.ObjectId;
-        decision: "approved" | "rejected";
-        comment?: string | null;
-        decidedAt: Date;
-      }>
-    | null
-    | undefined,
-) {
-  return approvals ?? [];
-}
-
-function toRequiredApprovalCount(investment: {
-  requiredApprovalCountSnapshot?: number | null;
-  requiredApproverIdsSnapshot?: Types.ObjectId[] | null;
-}) {
-  return (
-    investment.requiredApprovalCountSnapshot ??
-    investment.requiredApproverIdsSnapshot?.length ??
-    0
-  );
-}
+import { listInvestmentHistory } from "@/lib/services/investment-history";
+import { createInvestment, reviewInvestments } from "@/lib/services/investments";
 
 const createInvestmentSchema = z.object({
   amount: z
@@ -51,11 +14,18 @@ const createInvestmentSchema = z.object({
   note: z.string().trim().optional(),
 });
 
-const reviewInvestmentSchema = z.object({
-  investmentId: z.string().trim().min(1),
-  decision: z.enum(["approved", "rejected"]),
-  comment: z.string().trim().optional(),
-});
+const reviewInvestmentSchema = z.union([
+  z.object({
+    investmentId: z.string().trim().min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+  z.object({
+    investmentIds: z.array(z.string().trim().min(1)).min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+]);
 
 export async function GET(request: Request) {
   const session = await getRequiredSession(["partner"]);
@@ -64,138 +34,30 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await connectToDatabase();
+  try {
+    const { searchParams } = new URL(request.url);
+    const history = await listInvestmentHistory({
+      actorId: session.user.id,
+      page: Number(searchParams.get("page") ?? "1"),
+      pageSize: Number(searchParams.get("pageSize") ?? "10"),
+      scope: searchParams.get("scope"),
+      owner: searchParams.get("owner"),
+      status: searchParams.get("status"),
+      from: searchParams.get("from"),
+      to: searchParams.get("to"),
+      needsReview: searchParams.get("needsReview") === "true",
+    });
 
-  const { searchParams } = new URL(request.url);
-  const page = Math.max(Number(searchParams.get("page") ?? "1") || 1, 1);
-  const pageSize = Math.min(
-    Math.max(Number(searchParams.get("pageSize") ?? "10") || 10, 1),
-    50,
-  );
-  const scope = searchParams.get("scope")?.trim();
-  const owner = searchParams.get("owner")?.trim();
-  const status = searchParams.get("status")?.trim();
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-
-  const query: Record<string, unknown> = {};
-
-  if (scope === "mine") {
-    query.partnerId = new Types.ObjectId(session.user.id);
-  } else if (scope === "others") {
-    query.partnerId = { $ne: new Types.ObjectId(session.user.id) };
-  } else if (owner) {
-    query.partnerId = new Types.ObjectId(owner);
-  }
-
-  if (status && ["pending", "approved", "rejected"].includes(status)) {
-    query.status = status;
-  }
-
-  if (from || to) {
-    query.investedAt = {};
-
-    if (from) {
-      query.investedAt = {
-        ...(query.investedAt as Record<string, unknown>),
-        $gte: new Date(from),
-      };
-    }
-
-    if (to) {
-      const endDate = new Date(to);
-      endDate.setHours(23, 59, 59, 999);
-      query.investedAt = {
-        ...(query.investedAt as Record<string, unknown>),
-        $lte: endDate,
-      };
-    }
-  }
-
-  const [partners, totalCount, investments, approvedInvestments, balance] =
-    await Promise.all([
-      UserModel.find({ role: "partner", isActive: true })
-        .sort({ name: 1 })
-        .lean(),
-      InvestmentModel.countDocuments(query),
-      InvestmentModel.find(query)
-        .sort({ investedAt: -1, createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean(),
-      InvestmentModel.find({ status: "approved" }).lean(),
-      getCurrentBalanceSnapshot(),
-    ]);
-
-  const partnerNameById = new Map(
-    partners.map((partner) => [partner._id.toString(), partner.name]),
-  );
-
-  const approvedTotalByPartnerId = new Map<string, number>();
-
-  for (const investment of approvedInvestments) {
-    const partnerId = investment.partnerId.toString();
-    const currentTotal = approvedTotalByPartnerId.get(partnerId) ?? 0;
-
-    approvedTotalByPartnerId.set(
-      partnerId,
-      currentTotal + decimalToNumber(investment.amount),
+    return NextResponse.json(history);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to load investments",
+      },
+      { status: 400 },
     );
   }
-
-  return NextResponse.json({
-    balance,
-    partners: partners.map((partner) => ({
-      id: partner._id.toString(),
-      name: partner.name,
-      email: partner.email,
-    })),
-    approvedTotals: partners.map((partner) => ({
-      partnerId: partner._id.toString(),
-      partnerName: partner.name,
-      totalApprovedInvestment:
-        approvedTotalByPartnerId.get(partner._id.toString()) ?? 0,
-    })),
-    investments: investments.map((investment) => {
-      const approvals = toApprovals(investment.approvals);
-
-      return {
-        id: investment._id.toString(),
-        partnerId: investment.partnerId.toString(),
-        partnerName:
-          partnerNameById.get(investment.partnerId.toString()) ??
-          "Unknown partner",
-        amount: decimalToNumber(investment.amount),
-        note: investment.note ?? null,
-        status: investment.status,
-        submittedAt: toIsoDate(investment.submittedAt, investment.createdAt),
-        requiredApprovalCount: toRequiredApprovalCount(investment),
-        approvalCount: approvals.length,
-        canReview:
-          investment.partnerId.toString() !== session.user.id &&
-          investment.status === "pending" &&
-          !approvals.some(
-            (approval) => approval.partnerId.toString() === session.user.id,
-          ),
-        approvals: approvals.map((approval) => ({
-          partnerId: approval.partnerId.toString(),
-          partnerName:
-            partnerNameById.get(approval.partnerId.toString()) ??
-            "Unknown partner",
-          decision: approval.decision,
-          comment: approval.comment ?? null,
-          decidedAt: approval.decidedAt.toISOString(),
-        })),
-        investedAt: toIsoDate(investment.investedAt, investment.createdAt),
-      };
-    }),
-    pagination: {
-      page,
-      pageSize,
-      totalCount,
-      totalPages: Math.max(Math.ceil(totalCount / pageSize), 1),
-    },
-  });
 }
 
 export async function POST(request: Request) {
@@ -258,12 +120,20 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const investment = await reviewInvestment({
-      ...parsed.data,
+    const investmentIds =
+      "investmentId" in parsed.data
+        ? [parsed.data.investmentId]
+        : parsed.data.investmentIds;
+    const reviews = await reviewInvestments({
+      investmentIds,
       partnerId: session.user.id,
+      partnerName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
+      decision: parsed.data.decision,
+      comment: parsed.data.comment,
     });
 
-    return NextResponse.json({ status: investment.status });
+    return NextResponse.json({ reviews });
   } catch (error) {
     return NextResponse.json(
       {

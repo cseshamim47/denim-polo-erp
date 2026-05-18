@@ -5,7 +5,7 @@ import { getRequiredSession } from "@/lib/auth";
 import {
   createPurchase,
   listPurchases,
-  reviewPurchase,
+  reviewPurchases,
 } from "@/lib/services/purchases";
 
 const purchaseSchema = z.object({
@@ -18,11 +18,18 @@ const purchaseSchema = z.object({
   note: z.string().trim().optional(),
 });
 
-const reviewPurchaseSchema = z.object({
-  purchaseId: z.string().trim().min(1),
-  decision: z.enum(["approved", "rejected"]),
-  comment: z.string().trim().optional(),
-});
+const reviewPurchaseSchema = z.union([
+  z.object({
+    purchaseId: z.string().trim().min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+  z.object({
+    purchaseIds: z.array(z.string().trim().min(1)).min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+]);
 
 export async function GET(request: Request) {
   const session = await getRequiredSession(["partner"]);
@@ -46,6 +53,7 @@ export async function GET(request: Request) {
       to: to ? new Date(`${to}T23:59:59.999Z`) : undefined,
       page,
       pageSize,
+      needsReview: url.searchParams.get("needsReview") === "true",
     });
 
     return NextResponse.json(
@@ -85,12 +93,20 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const purchase = await reviewPurchase({
-      ...parsed.data,
+    const purchaseIds =
+      "purchaseId" in parsed.data
+        ? [parsed.data.purchaseId]
+        : parsed.data.purchaseIds;
+    const reviews = await reviewPurchases({
+      purchaseIds,
       partnerId: session.user.id,
+      partnerName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
+      decision: parsed.data.decision,
+      comment: parsed.data.comment,
     });
 
-    return NextResponse.json({ status: purchase.status });
+    return NextResponse.json({ reviews });
   } catch (error) {
     return NextResponse.json(
       {

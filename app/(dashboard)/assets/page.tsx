@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { applyReviewUpdates } from "@/lib/domain/approval-client";
+import type { ApprovalReviewUpdate } from "@/lib/services/approval-review";
 import { Spinner } from "@/components/ui/spinner";
 import { AssetFilters } from "./_components/asset-filters";
 import { AssetForm } from "./_components/asset-form";
@@ -24,6 +26,7 @@ const initialFilters: AssetFiltersState = {
   category: "",
   from: "",
   to: "",
+  needsReview: false,
 };
 
 const initialForm: AssetFormState = {
@@ -34,12 +37,30 @@ const initialForm: AssetFormState = {
   note: "",
 };
 
+function buildAssetQuery(filters: AssetFiltersState) {
+  const params = new URLSearchParams();
+  params.set("page", String(filters.page));
+  params.set("pageSize", "10");
+
+  if (filters.scope !== "all") params.set("scope", filters.scope);
+  if (filters.owner) params.set("owner", filters.owner);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.needsReview) params.set("needsReview", "true");
+
+  return params.toString();
+}
+
 export default function AssetsPage() {
   const [data, setData] = useState<AssetsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [openField, setOpenField] = useState<string | null>(null);
   const [filters, setFilters] = useState<AssetFiltersState>(initialFilters);
   const [form, setForm] = useState<AssetFormState>(initialForm);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [selectedNote, setSelectedNote] = useState<{
     title: string;
     note: string;
@@ -48,18 +69,7 @@ export default function AssetsPage() {
   async function load(nextFilters = filters) {
     setIsLoading(true);
 
-    const params = new URLSearchParams();
-    params.set("page", String(nextFilters.page));
-    params.set("pageSize", "10");
-
-    if (nextFilters.scope !== "all") params.set("scope", nextFilters.scope);
-    if (nextFilters.owner) params.set("owner", nextFilters.owner);
-    if (nextFilters.status) params.set("status", nextFilters.status);
-    if (nextFilters.category) params.set("category", nextFilters.category);
-    if (nextFilters.from) params.set("from", nextFilters.from);
-    if (nextFilters.to) params.set("to", nextFilters.to);
-
-    const response = await fetch(`/api/assets?${params.toString()}`, {
+    const response = await fetch(`/api/assets?${buildAssetQuery(nextFilters)}`, {
       cache: "no-store",
     });
 
@@ -78,24 +88,14 @@ export default function AssetsPage() {
     }
 
     setData(payload);
+    setSelectedAssetIds([]);
     setIsLoading(false);
   }
 
   useEffect(() => {
     let cancelled = false;
 
-    const params = new URLSearchParams();
-    params.set("page", String(filters.page));
-    params.set("pageSize", "10");
-
-    if (filters.scope !== "all") params.set("scope", filters.scope);
-    if (filters.owner) params.set("owner", filters.owner);
-    if (filters.status) params.set("status", filters.status);
-    if (filters.category) params.set("category", filters.category);
-    if (filters.from) params.set("from", filters.from);
-    if (filters.to) params.set("to", filters.to);
-
-    fetch(`/api/assets?${params.toString()}`, { cache: "no-store" })
+    fetch(`/api/assets?${buildAssetQuery(filters)}`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) {
           if (!cancelled) {
@@ -117,6 +117,7 @@ export default function AssetsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setSelectedAssetIds([]);
           setIsLoading(false);
         }
       })
@@ -132,31 +133,146 @@ export default function AssetsPage() {
     };
   }, [filters]);
 
-  async function reviewAsset(
-    assetId: string,
-    decision: "approved" | "rejected",
-  ) {
-    const loadingToastId = toast.loading(
-      `${decision === "approved" ? "Approving" : "Rejecting"} asset...`,
+  function applyAssetReviews(reviews: ApprovalReviewUpdate[]) {
+    setData((current) => {
+      if (!current || reviews.length === 0) {
+        return current;
+      }
+
+      const previousById = new Map(current.assets.map((asset) => [asset.id, asset]));
+      const patchedAssets = applyReviewUpdates(current.assets, reviews);
+      const visibleAssets = filters.needsReview
+        ? patchedAssets.filter((asset) => asset.canReview)
+        : patchedAssets;
+      let approvedAssetTotal = current.summary.approvedAssetTotal;
+      let pendingAssetCount = current.summary.pendingAssetCount;
+      let currentBalance = current.summary.currentBalance;
+      let removedCount = 0;
+
+      for (const review of reviews) {
+        const previous = previousById.get(review.id);
+
+        if (!previous || previous.status !== "pending") {
+          continue;
+        }
+
+        removedCount += filters.needsReview ? 1 : 0;
+        pendingAssetCount = Math.max(0, pendingAssetCount - 1);
+
+        if (review.status === "approved") {
+          approvedAssetTotal += previous.amount;
+          currentBalance -= previous.amount;
+        }
+      }
+
+      const totalCount = Math.max(0, current.pagination.totalCount - removedCount);
+
+      return {
+        ...current,
+        assets: visibleAssets,
+        summary: {
+          currentBalance,
+          approvedAssetTotal,
+          pendingAssetCount,
+        },
+        pagination: {
+          ...current.pagination,
+          totalCount,
+          totalPages: Math.max(
+            Math.ceil(totalCount / current.pagination.pageSize),
+            1,
+          ),
+        },
+      };
+    });
+
+    setSelectedAssetIds((current) =>
+      current.filter((assetId) => !reviews.some((review) => review.id === assetId)),
     );
+  }
+
+  function toggleAssetSelection(assetId: string, checked: boolean) {
+    setSelectedAssetIds((current) => {
+      if (checked) {
+        return current.includes(assetId) ? current : [...current, assetId];
+      }
+
+      return current.filter((id) => id !== assetId);
+    });
+  }
+
+  function toggleAllVisibleAssets() {
+    const visibleReviewableIds = (data?.assets ?? [])
+      .filter((asset) => asset.canReview)
+      .map((asset) => asset.id);
+
+    setSelectedAssetIds((current) => {
+      const allSelected =
+        visibleReviewableIds.length > 0 &&
+        visibleReviewableIds.every((assetId) => current.includes(assetId));
+
+      if (allSelected) {
+        return current.filter((id) => !visibleReviewableIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleReviewableIds]));
+    });
+  }
+
+  async function submitAssetReview(
+    payload:
+      | { assetId: string; decision: "approved" | "rejected" }
+      | { assetIds: string[]; decision: "approved" },
+    successMessage: string,
+    loadingMessage: string,
+  ) {
+    setIsReviewSubmitting(true);
+    const loadingToastId = toast.loading(loadingMessage);
 
     const response = await fetch("/api/assets", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId, decision }),
+      body: JSON.stringify(payload),
     });
 
-    const payload = await readJsonResponse<{ error?: string }>(response);
+    const result = await readJsonResponse<{
+      error?: string;
+      reviews?: ApprovalReviewUpdate[];
+    }>(response);
 
     toast.dismiss(loadingToastId);
+    setIsReviewSubmitting(false);
 
     if (!response.ok) {
-      toast.error(payload?.error ?? "Asset review failed.");
+      toast.error(result?.error ?? "Asset review failed.");
       return;
     }
 
-    toast.success(`Asset ${decision}.`);
-    await load();
+    applyAssetReviews(result?.reviews ?? []);
+    toast.success(successMessage);
+  }
+
+  async function reviewAsset(
+    assetId: string,
+    decision: "approved" | "rejected",
+  ) {
+    await submitAssetReview(
+      { assetId, decision },
+      `Asset ${decision}.`,
+      `${decision === "approved" ? "Approving" : "Rejecting"} asset...`,
+    );
+  }
+
+  async function approveSelectedAssets() {
+    if (selectedAssetIds.length === 0) {
+      return;
+    }
+
+    await submitAssetReview(
+      { assetIds: selectedAssetIds, decision: "approved" },
+      `${selectedAssetIds.length} asset(s) approved.`,
+      "Approving selected assets...",
+    );
   }
 
   return (
@@ -218,7 +334,10 @@ export default function AssetsPage() {
           openField={openField}
           setOpenField={setOpenField}
           filters={filters}
-          onChange={setFilters}
+          onChange={(next) => {
+            setFilters(next);
+            setSelectedAssetIds([]);
+          }}
           data={data}
         />
       </section>
@@ -227,8 +346,16 @@ export default function AssetsPage() {
         data={data}
         isLoading={isLoading}
         filters={filters}
-        onChangeFilters={setFilters}
+        onChangeFilters={(next) => {
+          setFilters(next);
+          setSelectedAssetIds([]);
+        }}
         onReview={reviewAsset}
+        onApproveSelected={approveSelectedAssets}
+        onToggleSelected={toggleAssetSelection}
+        onToggleAllVisible={toggleAllVisibleAssets}
+        selectedIds={selectedAssetIds}
+        isReviewSubmitting={isReviewSubmitting}
         onOpenNote={setSelectedNote}
       />
 

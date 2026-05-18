@@ -2,6 +2,7 @@
 
 import { ChevronsUpDownIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
@@ -39,6 +40,32 @@ export function AssetFilters({
   return (
     <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
       <h3 className="text-xl font-semibold tracking-tight">Filters</h3>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={filters.needsReview ? "outline" : "default"}
+          className={
+            filters.needsReview
+              ? "border-amber-200 bg-white text-foreground"
+              : "bg-foreground text-white"
+          }
+          onClick={() => onChange({ ...filters, needsReview: false, page: 1 })}
+        >
+          All assets
+        </Button>
+        <Button
+          type="button"
+          variant={filters.needsReview ? "default" : "outline"}
+          className={
+            filters.needsReview
+              ? "bg-amber-500 text-white hover:bg-amber-600"
+              : "border-amber-200 bg-white text-foreground"
+          }
+          onClick={() => onChange({ ...filters, needsReview: true, page: 1 })}
+        >
+          Needs my approval
+        </Button>
+      </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Popover
           open={openField === "scope"}
@@ -258,6 +285,7 @@ export function AssetFilters({
             category: "",
             from: "",
             to: "",
+            needsReview: false,
           })
         }
         type="button"

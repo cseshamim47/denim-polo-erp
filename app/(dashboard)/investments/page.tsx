@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import type { SetStateAction, WheelEvent } from "react";
 import { ChevronsUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
+import { ApprovalSelectionBar } from "@/components/approval/approval-selection-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -34,6 +36,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { applyReviewUpdates } from "@/lib/domain/approval-client";
+import type { ApprovalReviewUpdate } from "@/lib/services/approval-review";
 
 type InvestmentsResponse = {
   balance: {
@@ -133,6 +137,29 @@ function getInvestmentStatusClassName(
   return "border-amber-200 bg-amber-50 text-amber-800";
 }
 
+function buildInvestmentQuery(filters: {
+  page: number;
+  scope: string;
+  owner: string;
+  status: string;
+  from: string;
+  to: string;
+  needsReview: boolean;
+}) {
+  const params = new URLSearchParams();
+  params.set("page", String(filters.page));
+  params.set("pageSize", "10");
+
+  if (filters.scope !== "all") params.set("scope", filters.scope);
+  if (filters.owner) params.set("owner", filters.owner);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.needsReview) params.set("needsReview", "true");
+
+  return params.toString();
+}
+
 export default function InvestmentsPage() {
   const [data, setData] = useState<InvestmentsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,12 +171,17 @@ export default function InvestmentsPage() {
     status: "",
     from: "",
     to: "",
+    needsReview: false,
   });
   const [investmentForm, setInvestmentForm] = useState({
     amount: "",
     investedAt: new Date().toISOString().slice(0, 10),
     note: "",
   });
+  const [selectedInvestmentIds, setSelectedInvestmentIds] = useState<string[]>(
+    [],
+  );
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [selectedNote, setSelectedNote] = useState<{
     title: string;
     note: string;
@@ -163,19 +195,12 @@ export default function InvestmentsPage() {
   async function load(nextFilters = filters) {
     setIsLoading(true);
 
-    const params = new URLSearchParams();
-    params.set("page", String(nextFilters.page));
-    params.set("pageSize", "10");
-
-    if (nextFilters.scope !== "all") params.set("scope", nextFilters.scope);
-    if (nextFilters.owner) params.set("owner", nextFilters.owner);
-    if (nextFilters.status) params.set("status", nextFilters.status);
-    if (nextFilters.from) params.set("from", nextFilters.from);
-    if (nextFilters.to) params.set("to", nextFilters.to);
-
-    const response = await fetch(`/api/investments?${params.toString()}`, {
-      cache: "no-store",
-    });
+    const response = await fetch(
+      `/api/investments?${buildInvestmentQuery(nextFilters)}`,
+      {
+        cache: "no-store",
+      },
+    );
 
     if (!response.ok) {
       setIsLoading(false);
@@ -192,23 +217,16 @@ export default function InvestmentsPage() {
     }
 
     setData(payload);
+    setSelectedInvestmentIds([]);
     setIsLoading(false);
   }
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    params.set("page", String(filters.page));
-    params.set("pageSize", "10");
-
-    if (filters.scope !== "all") params.set("scope", filters.scope);
-    if (filters.owner) params.set("owner", filters.owner);
-    if (filters.status) params.set("status", filters.status);
-    if (filters.from) params.set("from", filters.from);
-    if (filters.to) params.set("to", filters.to);
-
     let cancelled = false;
 
-    fetch(`/api/investments?${params.toString()}`, { cache: "no-store" })
+    fetch(`/api/investments?${buildInvestmentQuery(filters)}`, {
+      cache: "no-store",
+    })
       .then(async (response) => {
         if (!response.ok) {
           if (!cancelled) {
@@ -230,6 +248,7 @@ export default function InvestmentsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setSelectedInvestmentIds([]);
           setIsLoading(false);
         }
       })
@@ -244,6 +263,146 @@ export default function InvestmentsPage() {
       cancelled = true;
     };
   }, [filters]);
+
+  function applyInvestmentReviews(reviews: ApprovalReviewUpdate[]) {
+    setData((current) => {
+      if (!current || reviews.length === 0) {
+        return current;
+      }
+
+      const previousById = new Map(
+        current.investments.map((investment) => [investment.id, investment]),
+      );
+      const patchedInvestments = applyReviewUpdates(current.investments, reviews);
+      const visibleInvestments = filters.needsReview
+        ? patchedInvestments.filter((investment) => investment.canReview)
+        : patchedInvestments;
+      const approvedTotals = current.approvedTotals.map((entry) => ({ ...entry }));
+      let currentBalance = current.balance.currentBalance;
+      let removedCount = 0;
+
+      for (const review of reviews) {
+        const previous = previousById.get(review.id);
+
+        if (!previous || previous.status !== "pending") {
+          continue;
+        }
+
+        removedCount += filters.needsReview ? 1 : 0;
+
+        if (review.status === "approved") {
+          currentBalance += previous.amount;
+          const totalEntry = approvedTotals.find(
+            (entry) => entry.partnerId === previous.partnerId,
+          );
+
+          if (totalEntry) {
+            totalEntry.totalApprovedInvestment += previous.amount;
+          }
+        }
+      }
+
+      const totalCount = Math.max(0, current.pagination.totalCount - removedCount);
+
+      return {
+        ...current,
+        investments: visibleInvestments,
+        approvedTotals,
+        balance: {
+          ...current.balance,
+          currentBalance,
+          breakdown: {
+            ...current.balance.breakdown,
+            approvedInvestmentTotal:
+              current.balance.breakdown.approvedInvestmentTotal +
+              reviews.reduce((sum, review) => {
+                const previous = previousById.get(review.id);
+                return review.status === "approved" && previous
+                  ? sum + previous.amount
+                  : sum;
+              }, 0),
+          },
+        },
+        pagination: {
+          ...current.pagination,
+          totalCount,
+          totalPages: Math.max(Math.ceil(totalCount / current.pagination.pageSize), 1),
+        },
+      };
+    });
+
+    setSelectedInvestmentIds((current) =>
+      current.filter(
+        (investmentId) =>
+          !reviews.some((review) => review.id === investmentId),
+      ),
+    );
+  }
+
+  function toggleInvestmentSelection(investmentId: string, checked: boolean) {
+    setSelectedInvestmentIds((current) => {
+      if (checked) {
+        return current.includes(investmentId)
+          ? current
+          : [...current, investmentId];
+      }
+
+      return current.filter((id) => id !== investmentId);
+    });
+  }
+
+  function toggleAllVisibleInvestments() {
+    const visibleReviewableIds = (data?.investments ?? [])
+      .filter((investment) => investment.canReview)
+      .map((investment) => investment.id);
+
+    setSelectedInvestmentIds((current) => {
+      const allSelected =
+        visibleReviewableIds.length > 0 &&
+        visibleReviewableIds.every((investmentId) =>
+          current.includes(investmentId),
+        );
+
+      if (allSelected) {
+        return current.filter((id) => !visibleReviewableIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleReviewableIds]));
+    });
+  }
+
+  async function submitInvestmentReview(
+    payload:
+      | { investmentId: string; decision: "approved" | "rejected" }
+      | { investmentIds: string[]; decision: "approved" },
+    loadingMessage: string,
+    successMessage: string,
+  ) {
+    setIsReviewSubmitting(true);
+    const loadingToastId = toast.loading(loadingMessage);
+
+    const response = await fetch("/api/investments", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await readJsonResponse<{
+      error?: string;
+      reviews?: ApprovalReviewUpdate[];
+    }>(response);
+
+    toast.dismiss(loadingToastId);
+    setIsReviewSubmitting(false);
+
+    if (!response.ok) {
+      toast.error(result?.error ?? "Investment review failed.");
+      return;
+    }
+
+    applyInvestmentReviews(result?.reviews ?? []);
+    toast.success(successMessage);
+  }
 
   async function submitInvestment() {
     const trimmedAmount = investmentForm.amount.trim();
@@ -295,27 +454,33 @@ export default function InvestmentsPage() {
   }
 
   async function review(id: string, decision: "approved" | "rejected") {
-    const loadingToastId = toast.loading(
+    await submitInvestmentReview(
+      { investmentId: id, decision },
       `${decision === "approved" ? "Approving" : "Rejecting"} investment...`,
+      `Investment ${decision}.`,
     );
+  }
 
-    const response = await fetch("/api/investments", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ investmentId: id, decision }),
-    });
-    const payload = await readJsonResponse<{ error?: string }>(response);
-
-    toast.dismiss(loadingToastId);
-
-    if (!response.ok) {
-      toast.error(payload?.error ?? "Investment review failed.");
+  async function approveSelectedInvestments() {
+    if (selectedInvestmentIds.length === 0) {
       return;
     }
 
-    toast.success(`Investment ${decision}.`);
-    await load();
+    await submitInvestmentReview(
+      { investmentIds: selectedInvestmentIds, decision: "approved" },
+      "Approving selected investments...",
+      `${selectedInvestmentIds.length} investment(s) approved.`,
+    );
   }
+
+  const reviewableInvestmentIds = (data?.investments ?? [])
+    .filter((investment) => investment.canReview)
+    .map((investment) => investment.id);
+  const allVisibleInvestmentsSelected =
+    reviewableInvestmentIds.length > 0 &&
+    reviewableInvestmentIds.every((investmentId) =>
+      selectedInvestmentIds.includes(investmentId),
+    );
 
   return (
     <div className="space-y-6">
@@ -434,6 +599,44 @@ export default function InvestmentsPage() {
 
         <div className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
           <h3 className="text-xl font-semibold tracking-tight">Filters</h3>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={filters.needsReview ? "outline" : "default"}
+              className={
+                filters.needsReview
+                  ? "border-amber-200 bg-white text-foreground"
+                  : "bg-foreground text-white"
+              }
+              onClick={() =>
+                updateFilters((current) => ({
+                  ...current,
+                  needsReview: false,
+                  page: 1,
+                }))
+              }
+            >
+              All investments
+            </Button>
+            <Button
+              type="button"
+              variant={filters.needsReview ? "default" : "outline"}
+              className={
+                filters.needsReview
+                  ? "bg-amber-500 text-white hover:bg-amber-600"
+                  : "border-amber-200 bg-white text-foreground"
+              }
+              onClick={() =>
+                updateFilters((current) => ({
+                  ...current,
+                  needsReview: true,
+                  page: 1,
+                }))
+              }
+            >
+              Needs my approval
+            </Button>
+          </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Popover
               open={openFilterField === "scope"}
@@ -642,6 +845,7 @@ export default function InvestmentsPage() {
                   status: "",
                   from: "",
                   to: "",
+                  needsReview: false,
                 };
                 updateFilters(reset);
               }}
@@ -664,6 +868,17 @@ export default function InvestmentsPage() {
               : `${data?.pagination.totalCount ?? 0} record(s)`}
           </p>
         </div>
+        <ApprovalSelectionBar
+          selectedCount={selectedInvestmentIds.length}
+          selectableCount={reviewableInvestmentIds.length}
+          onApproveSelected={() => {
+            void approveSelectedInvestments();
+          }}
+          onToggleAll={toggleAllVisibleInvestments}
+          allSelected={allVisibleInvestmentsSelected}
+          isBusy={isReviewSubmitting}
+          label="investment(s)"
+        />
         <div className="mt-4 grid gap-4 md:hidden">
           {isLoading ? (
             Array.from({ length: 3 }).map((_, index) => (
@@ -687,22 +902,38 @@ export default function InvestmentsPage() {
               >
                 <CardHeader className="px-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="text-base">
-                        {investment.partnerName}
-                      </CardTitle>
-                      <p className="mt-1 text-sm text-(--text-secondary)">
-                        Invested{" "}
-                        {new Date(investment.investedAt).toLocaleDateString(
-                          "en-BD",
-                        )}
-                      </p>
-                      <p className="mt-1 text-xs text-(--text-secondary)">
-                        Submitted{" "}
-                        {new Date(investment.submittedAt).toLocaleDateString(
-                          "en-BD",
-                        )}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      {investment.canReview ? (
+                        <Checkbox
+                          checked={selectedInvestmentIds.includes(investment.id)}
+                          onCheckedChange={(checked) =>
+                            toggleInvestmentSelection(
+                              investment.id,
+                              checked === true,
+                            )
+                          }
+                          aria-label={`Select ${investment.partnerName}`}
+                        />
+                      ) : (
+                        <div className="size-4 shrink-0" />
+                      )}
+                      <div>
+                        <CardTitle className="text-base">
+                          {investment.partnerName}
+                        </CardTitle>
+                        <p className="mt-1 text-sm text-(--text-secondary)">
+                          Invested{" "}
+                          {new Date(investment.investedAt).toLocaleDateString(
+                            "en-BD",
+                          )}
+                        </p>
+                        <p className="mt-1 text-xs text-(--text-secondary)">
+                          Submitted{" "}
+                          {new Date(investment.submittedAt).toLocaleDateString(
+                            "en-BD",
+                          )}
+                        </p>
+                      </div>
                     </div>
                     <Badge
                       variant="outline"
@@ -774,6 +1005,7 @@ export default function InvestmentsPage() {
                       <Button
                         size="sm"
                         className="w-full"
+                        disabled={isReviewSubmitting}
                         onClick={() => void review(investment.id, "approved")}
                       >
                         Approve
@@ -782,6 +1014,7 @@ export default function InvestmentsPage() {
                         variant="destructive"
                         size="sm"
                         className="w-full"
+                        disabled={isReviewSubmitting}
                         onClick={() => void review(investment.id, "rejected")}
                       >
                         Reject
@@ -807,6 +1040,14 @@ export default function InvestmentsPage() {
           <table className="w-full min-w-240 text-sm">
             <thead className="bg-(--surface-accent-soft)">
               <tr>
+                <th className="px-3 py-2 text-center font-semibold">
+                  <Checkbox
+                    checked={allVisibleInvestmentsSelected}
+                    onCheckedChange={() => toggleAllVisibleInvestments()}
+                    aria-label="Select all visible investments"
+                    disabled={reviewableInvestmentIds.length === 0}
+                  />
+                </th>
                 <th className="px-3 py-2 text-left font-semibold">Partner</th>
                 <th className="px-3 py-2 text-left font-semibold">Invested</th>
                 <th className="px-3 py-2 text-left font-semibold">Submitted</th>
@@ -820,13 +1061,27 @@ export default function InvestmentsPage() {
             <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
               {isLoading ? (
                 <tr>
-                  <td className="px-3 py-8" colSpan={8}>
+                  <td className="px-3 py-8" colSpan={9}>
                     <Spinner label="Loading investment history..." />
                   </td>
                 </tr>
               ) : (
                 (data?.investments ?? []).map((investment) => (
                   <tr key={investment.id} className="align-top">
+                    <td className="px-3 py-3 text-center">
+                      {investment.canReview ? (
+                        <Checkbox
+                          checked={selectedInvestmentIds.includes(investment.id)}
+                          onCheckedChange={(checked) =>
+                            toggleInvestmentSelection(
+                              investment.id,
+                              checked === true,
+                            )
+                          }
+                          aria-label={`Select ${investment.partnerName}`}
+                        />
+                      ) : null}
+                    </td>
                     <td className="px-3 py-3 font-medium text-foreground">
                       {investment.partnerName}
                     </td>
@@ -893,6 +1148,7 @@ export default function InvestmentsPage() {
                         <div className="flex justify-center gap-2">
                           <Button
                             size="sm"
+                            disabled={isReviewSubmitting}
                             onClick={() =>
                               void review(investment.id, "approved")
                             }
@@ -902,6 +1158,7 @@ export default function InvestmentsPage() {
                           <Button
                             variant="destructive"
                             size="sm"
+                            disabled={isReviewSubmitting}
                             onClick={() =>
                               void review(investment.id, "rejected")
                             }

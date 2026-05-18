@@ -2,6 +2,11 @@ import { HydratedDocument, Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import {
+  buildApprovalReviewUpdate,
+  uniqReviewIds,
+  type ApprovalDecision,
+} from "@/lib/services/approval-review";
+import {
   buildAssetApprovalSnapshot,
   evaluateAssetDecision,
 } from "@/lib/domain/asset-approval";
@@ -95,4 +100,45 @@ export async function reviewAsset(input: {
   await asset.save();
 
   return asset;
+}
+
+export async function reviewAssets(input: {
+  assetIds: string[];
+  partnerId: string;
+  partnerName: string;
+  decision: ApprovalDecision;
+  comment?: string;
+}) {
+  const assetIds = uniqReviewIds(input.assetIds);
+  const reviews = [];
+
+  for (const assetId of assetIds) {
+    const asset = await reviewAsset({
+      assetId,
+      partnerId: input.partnerId,
+      decision: input.decision,
+      comment: input.comment,
+    });
+    const actorApproval = asset.approvals.find(
+      (approval) => approval.partnerId.toString() === input.partnerId,
+    );
+
+    if (!actorApproval) {
+      continue;
+    }
+
+    reviews.push(
+      buildApprovalReviewUpdate({
+        id: asset._id.toString(),
+        status: asset.status,
+        partnerId: input.partnerId,
+        partnerName: input.partnerName,
+        decision: actorApproval.decision,
+        comment: actorApproval.comment,
+        decidedAt: actorApproval.decidedAt,
+      }),
+    );
+  }
+
+  return reviews;
 }

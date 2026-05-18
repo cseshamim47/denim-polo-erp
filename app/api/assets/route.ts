@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
 import { listAssetHistory } from "@/lib/services/asset-history";
-import { createAsset, reviewAsset } from "@/lib/services/assets";
+import { createAsset, reviewAssets } from "@/lib/services/assets";
 
 const createAssetSchema = z.object({
   title: z.string().trim().min(1),
@@ -13,11 +13,18 @@ const createAssetSchema = z.object({
   assetDate: z.coerce.date(),
 });
 
-const reviewAssetSchema = z.object({
-  assetId: z.string().trim().min(1),
-  decision: z.enum(["approved", "rejected"]),
-  comment: z.string().trim().optional(),
-});
+const reviewAssetSchema = z.union([
+  z.object({
+    assetId: z.string().trim().min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+  z.object({
+    assetIds: z.array(z.string().trim().min(1)).min(1),
+    decision: z.enum(["approved", "rejected"]),
+    comment: z.string().trim().optional(),
+  }),
+]);
 
 export async function GET(request: Request) {
   const session = await getRequiredSession(["partner"]);
@@ -38,6 +45,7 @@ export async function GET(request: Request) {
       category: searchParams.get("category"),
       from: searchParams.get("from"),
       to: searchParams.get("to"),
+      needsReview: searchParams.get("needsReview") === "true",
     });
 
     return NextResponse.json(history);
@@ -107,12 +115,18 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const asset = await reviewAsset({
-      ...parsed.data,
+    const assetIds =
+      "assetId" in parsed.data ? [parsed.data.assetId] : parsed.data.assetIds;
+    const reviews = await reviewAssets({
+      assetIds,
       partnerId: session.user.id,
+      partnerName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
+      decision: parsed.data.decision,
+      comment: parsed.data.comment,
     });
 
-    return NextResponse.json({ status: asset.status });
+    return NextResponse.json({ reviews });
   } catch (error) {
     return NextResponse.json(
       {

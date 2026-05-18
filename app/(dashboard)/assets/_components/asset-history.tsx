@@ -1,7 +1,9 @@
 "use client";
 
+import { ApprovalSelectionBar } from "@/components/approval/approval-selection-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -24,6 +26,11 @@ export function AssetHistory({
   filters,
   onChangeFilters,
   onReview,
+  onApproveSelected,
+  onToggleSelected,
+  onToggleAllVisible,
+  selectedIds,
+  isReviewSubmitting,
   onOpenNote,
 }: {
   data: AssetsResponse | null;
@@ -31,8 +38,20 @@ export function AssetHistory({
   filters: AssetFiltersState;
   onChangeFilters: (next: AssetFiltersState) => void;
   onReview: (assetId: string, decision: "approved" | "rejected") => Promise<void>;
+  onApproveSelected: () => Promise<void>;
+  onToggleSelected: (assetId: string, checked: boolean) => void;
+  onToggleAllVisible: () => void;
+  selectedIds: string[];
+  isReviewSubmitting: boolean;
   onOpenNote: (note: { title: string; note: string }) => void;
 }) {
+  const reviewableIds = (data?.assets ?? [])
+    .filter((asset) => asset.canReview)
+    .map((asset) => asset.id);
+  const allVisibleSelected =
+    reviewableIds.length > 0 &&
+    reviewableIds.every((assetId) => selectedIds.includes(assetId));
+
   return (
     <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
@@ -43,6 +62,18 @@ export function AssetHistory({
             : `${data?.pagination.totalCount ?? 0} record(s)`}
         </p>
       </div>
+
+      <ApprovalSelectionBar
+        selectedCount={selectedIds.length}
+        selectableCount={reviewableIds.length}
+        onApproveSelected={() => {
+          void onApproveSelected();
+        }}
+        onToggleAll={onToggleAllVisible}
+        allSelected={allVisibleSelected}
+        isBusy={isReviewSubmitting}
+        label="asset(s)"
+      />
 
       <div className="mt-4 grid gap-4 md:hidden">
         {isLoading ? (
@@ -64,11 +95,24 @@ export function AssetHistory({
             >
               <CardHeader className="px-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base">{asset.title}</CardTitle>
-                    <CardDescription>
-                      {asset.category} · {asset.submittedByName}
-                    </CardDescription>
+                  <div className="flex items-start gap-3">
+                    {asset.canReview ? (
+                      <Checkbox
+                        checked={selectedIds.includes(asset.id)}
+                        onCheckedChange={(checked) =>
+                          onToggleSelected(asset.id, checked === true)
+                        }
+                        aria-label={`Select ${asset.title}`}
+                      />
+                    ) : (
+                      <div className="size-4 shrink-0" />
+                    )}
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">{asset.title}</CardTitle>
+                      <CardDescription>
+                        {asset.category} · {asset.submittedByName}
+                      </CardDescription>
+                    </div>
                   </div>
                   <Badge
                     variant="outline"
@@ -149,6 +193,7 @@ export function AssetHistory({
                     <Button
                       size="sm"
                       className="w-full"
+                      disabled={isReviewSubmitting}
                       onClick={() => void onReview(asset.id, "approved")}
                     >
                       Approve
@@ -157,6 +202,7 @@ export function AssetHistory({
                       variant="destructive"
                       size="sm"
                       className="w-full"
+                      disabled={isReviewSubmitting}
                       onClick={() => void onReview(asset.id, "rejected")}
                     >
                       Reject
@@ -183,6 +229,14 @@ export function AssetHistory({
         <table className="w-full min-w-240 text-sm">
           <thead className="bg-(--surface-accent-soft)">
             <tr>
+              <th className="px-3 py-2 text-center font-semibold">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  onCheckedChange={() => onToggleAllVisible()}
+                  aria-label="Select all visible assets"
+                  disabled={reviewableIds.length === 0}
+                />
+              </th>
               <th className="px-3 py-2 text-left font-semibold">Title</th>
               <th className="px-3 py-2 text-left font-semibold">Category</th>
               <th className="px-3 py-2 text-left font-semibold">Owner</th>
@@ -197,13 +251,24 @@ export function AssetHistory({
           <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
             {isLoading ? (
               <tr>
-                <td className="px-3 py-8" colSpan={9}>
+                <td className="px-3 py-8" colSpan={10}>
                   <Spinner label="Loading asset history..." />
                 </td>
               </tr>
             ) : (
               (data?.assets ?? []).map((asset) => (
                 <tr key={asset.id} className="align-top">
+                  <td className="px-3 py-3 text-center">
+                    {asset.canReview ? (
+                      <Checkbox
+                        checked={selectedIds.includes(asset.id)}
+                        onCheckedChange={(checked) =>
+                          onToggleSelected(asset.id, checked === true)
+                        }
+                        aria-label={`Select ${asset.title}`}
+                      />
+                    ) : null}
+                  </td>
                   <td className="px-3 py-3 font-medium text-foreground">
                     {asset.title}
                   </td>
@@ -268,6 +333,7 @@ export function AssetHistory({
                       <div className="flex justify-center gap-2">
                         <Button
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() => void onReview(asset.id, "approved")}
                         >
                           Approve
@@ -275,6 +341,7 @@ export function AssetHistory({
                         <Button
                           variant="destructive"
                           size="sm"
+                          disabled={isReviewSubmitting}
                           onClick={() => void onReview(asset.id, "rejected")}
                         >
                           Reject

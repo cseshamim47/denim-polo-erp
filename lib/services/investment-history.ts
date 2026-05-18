@@ -2,12 +2,11 @@ import { Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import { decimalToNumber } from "@/lib/money";
-import ExpenseModel, { type ExpenseStatus } from "@/models/Expense";
+import { getCurrentBalanceSnapshot } from "@/lib/services/balance";
+import InvestmentModel, { type InvestmentStatus } from "@/models/Investment";
 import UserModel from "@/models/User";
 
-export type ExpenseHistoryScope = "all" | "mine" | "others";
-
-export interface ListExpenseHistoryInput {
+export interface ListInvestmentHistoryInput {
   actorId: string;
   page?: number;
   pageSize?: number;
@@ -40,13 +39,13 @@ function toApprovals(
   return approvals ?? [];
 }
 
-function toRequiredApprovalCount(expense: {
+function toRequiredApprovalCount(investment: {
   requiredApprovalCountSnapshot?: number | null;
   requiredApproverIdsSnapshot?: Types.ObjectId[] | null;
 }) {
   return (
-    expense.requiredApprovalCountSnapshot ??
-    expense.requiredApproverIdsSnapshot?.length ??
+    investment.requiredApprovalCountSnapshot ??
+    investment.requiredApproverIdsSnapshot?.length ??
     0
   );
 }
@@ -73,12 +72,6 @@ function toObjectId(value: string, label: string) {
   return new Types.ObjectId(value);
 }
 
-function toSortedSuggestions(values: unknown[]) {
-  return values
-    .filter((value): value is string => typeof value === "string")
-    .sort((left, right) => left.localeCompare(right));
-}
-
 function toDate(value: string | null | undefined, boundary: "start" | "end") {
   if (!value) {
     return null;
@@ -101,7 +94,7 @@ function toDate(value: string | null | undefined, boundary: "start" | "end") {
   return date;
 }
 
-export async function listExpenseHistory(input: ListExpenseHistoryInput) {
+export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
   await connectToDatabase();
 
   const page = toPage(input.page, 1);
@@ -113,88 +106,105 @@ export async function listExpenseHistory(input: ListExpenseHistoryInput) {
   const query: Record<string, unknown> = {};
 
   if (owner) {
-    query.submittedBy = toObjectId(owner, "owner filter");
+    query.partnerId = toObjectId(owner, "owner filter");
   } else if (scope === "mine") {
-    query.submittedBy = actorId;
+    query.partnerId = actorId;
   } else if (scope === "others") {
-    query.submittedBy = { $ne: actorId };
+    query.partnerId = { $ne: actorId };
   }
 
   if (input.needsReview) {
     query.status = "pending";
-    query.submittedBy = { $ne: actorId };
+    query.partnerId = { $ne: actorId };
     query.requiredApproverIdsSnapshot = actorId;
     query.approvals = {
       $not: { $elemMatch: { partnerId: actorId } },
     };
   } else if (status && ["pending", "approved", "rejected"].includes(status)) {
-    query.status = status as ExpenseStatus;
+    query.status = status as InvestmentStatus;
   }
 
   const fromDate = toDate(input.from, "start");
   const toDateValue = toDate(input.to, "end");
 
   if (fromDate || toDateValue) {
-    query.expenseDate = {};
+    query.investedAt = {};
 
     if (fromDate) {
-      query.expenseDate = {
-        ...(query.expenseDate as Record<string, unknown>),
+      query.investedAt = {
+        ...(query.investedAt as Record<string, unknown>),
         $gte: fromDate,
       };
     }
 
     if (toDateValue) {
-      query.expenseDate = {
-        ...(query.expenseDate as Record<string, unknown>),
+      query.investedAt = {
+        ...(query.investedAt as Record<string, unknown>),
         $lte: toDateValue,
       };
     }
   }
 
-  const [allPartners, totalCount, expenses, titleSuggestions] =
+  const [partners, totalCount, investments, approvedInvestments, balance] =
     await Promise.all([
-      UserModel.find({ role: "partner" }).sort({ name: 1 }).lean(),
-      ExpenseModel.countDocuments(query),
-      ExpenseModel.find(query)
-        .sort({ expenseDate: -1, createdAt: -1 })
+      UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
+      InvestmentModel.countDocuments(query),
+      InvestmentModel.find(query)
+        .sort({ investedAt: -1, createdAt: -1 })
         .skip((page - 1) * pageSize)
         .limit(pageSize)
         .lean(),
-      ExpenseModel.distinct("title"),
+      InvestmentModel.find({ status: "approved" }).lean(),
+      getCurrentBalanceSnapshot(),
     ]);
 
   const partnerNameById = new Map(
-    allPartners.map((partner) => [partner._id.toString(), partner.name]),
+    partners.map((partner) => [partner._id.toString(), partner.name]),
   );
-  const activePartners = allPartners.filter((partner) => partner.isActive);
+
+  const approvedTotalByPartnerId = new Map<string, number>();
+
+  for (const investment of approvedInvestments) {
+    const partnerId = investment.partnerId.toString();
+    const currentTotal = approvedTotalByPartnerId.get(partnerId) ?? 0;
+
+    approvedTotalByPartnerId.set(
+      partnerId,
+      currentTotal + decimalToNumber(investment.amount),
+    );
+  }
 
   return {
-    partners: activePartners.map((partner) => ({
+    balance,
+    partners: partners.map((partner) => ({
       id: partner._id.toString(),
       name: partner.name,
       email: partner.email,
     })),
-    titleSuggestions: toSortedSuggestions(titleSuggestions),
-    expenses: expenses.map((expense) => {
-      const approvals = toApprovals(expense.approvals);
+    approvedTotals: partners.map((partner) => ({
+      partnerId: partner._id.toString(),
+      partnerName: partner.name,
+      totalApprovedInvestment:
+        approvedTotalByPartnerId.get(partner._id.toString()) ?? 0,
+    })),
+    investments: investments.map((investment) => {
+      const approvals = toApprovals(investment.approvals);
 
       return {
-        id: expense._id.toString(),
-        title: expense.title,
-        amount: decimalToNumber(expense.amount),
-        note: expense.note ?? null,
-        status: expense.status,
-        submittedById: expense.submittedBy.toString(),
-        submittedByName:
-          partnerNameById.get(expense.submittedBy.toString()) ??
+        id: investment._id.toString(),
+        partnerId: investment.partnerId.toString(),
+        partnerName:
+          partnerNameById.get(investment.partnerId.toString()) ??
           "Unknown partner",
-        submittedAt: toIsoDate(expense.submittedAt, expense.createdAt),
-        requiredApprovalCount: toRequiredApprovalCount(expense),
+        amount: decimalToNumber(investment.amount),
+        note: investment.note ?? null,
+        status: investment.status,
+        submittedAt: toIsoDate(investment.submittedAt, investment.createdAt),
+        requiredApprovalCount: toRequiredApprovalCount(investment),
         approvalCount: approvals.length,
         canReview:
-          expense.submittedBy.toString() !== input.actorId &&
-          expense.status === "pending" &&
+          investment.partnerId.toString() !== input.actorId &&
+          investment.status === "pending" &&
           !approvals.some(
             (approval) => approval.partnerId.toString() === input.actorId,
           ),
@@ -207,7 +217,7 @@ export async function listExpenseHistory(input: ListExpenseHistoryInput) {
           comment: approval.comment ?? null,
           decidedAt: approval.decidedAt.toISOString(),
         })),
-        expenseDate: toIsoDate(expense.expenseDate, expense.createdAt),
+        investedAt: toIsoDate(investment.investedAt, investment.createdAt),
       };
     }),
     pagination: {

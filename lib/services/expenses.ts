@@ -2,6 +2,11 @@ import { Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import {
+  buildApprovalReviewUpdate,
+  uniqReviewIds,
+  type ApprovalDecision,
+} from "@/lib/services/approval-review";
+import {
   buildExpenseApprovalSnapshot,
   evaluateExpenseDecision,
 } from "@/lib/domain/expense-approval";
@@ -93,4 +98,45 @@ export async function reviewExpense(input: {
   await expense.save();
 
   return expense;
+}
+
+export async function reviewExpenses(input: {
+  expenseIds: string[];
+  partnerId: string;
+  partnerName: string;
+  decision: ApprovalDecision;
+  comment?: string;
+}) {
+  const expenseIds = uniqReviewIds(input.expenseIds);
+  const reviews = [];
+
+  for (const expenseId of expenseIds) {
+    const expense = await reviewExpense({
+      expenseId,
+      partnerId: input.partnerId,
+      decision: input.decision,
+      comment: input.comment,
+    });
+    const actorApproval = expense.approvals.find(
+      (approval) => approval.partnerId.toString() === input.partnerId,
+    );
+
+    if (!actorApproval) {
+      continue;
+    }
+
+    reviews.push(
+      buildApprovalReviewUpdate({
+        id: expense._id.toString(),
+        status: expense.status,
+        partnerId: input.partnerId,
+        partnerName: input.partnerName,
+        decision: actorApproval.decision,
+        comment: actorApproval.comment,
+        decidedAt: actorApproval.decidedAt,
+      }),
+    );
+  }
+
+  return reviews;
 }

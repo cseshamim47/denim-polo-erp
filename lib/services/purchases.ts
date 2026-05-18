@@ -5,6 +5,11 @@ import {
   buildPurchaseApprovalSnapshot,
   evaluatePurchaseDecision,
 } from "@/lib/domain/purchase-approval";
+import {
+  buildApprovalReviewUpdate,
+  uniqReviewIds,
+  type ApprovalDecision,
+} from "@/lib/services/approval-review";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import { applyPurchaseToVariant } from "@/lib/domain/stock-calculations";
 import PurchaseModel, {
@@ -204,6 +209,47 @@ export async function reviewPurchase(input: {
   return purchase;
 }
 
+export async function reviewPurchases(input: {
+  purchaseIds: string[];
+  partnerId: string;
+  partnerName: string;
+  decision: ApprovalDecision;
+  comment?: string;
+}) {
+  const purchaseIds = uniqReviewIds(input.purchaseIds);
+  const reviews = [];
+
+  for (const purchaseId of purchaseIds) {
+    const purchase = await reviewPurchase({
+      purchaseId,
+      partnerId: input.partnerId,
+      decision: input.decision,
+      comment: input.comment,
+    });
+    const actorApproval = purchase.approvals.find(
+      (approval) => approval.partnerId.toString() === input.partnerId,
+    );
+
+    if (!actorApproval) {
+      continue;
+    }
+
+    reviews.push(
+      buildApprovalReviewUpdate({
+        id: purchase._id.toString(),
+        status: purchase.status,
+        partnerId: input.partnerId,
+        partnerName: input.partnerName,
+        decision: actorApproval.decision,
+        comment: actorApproval.comment,
+        decidedAt: actorApproval.decidedAt,
+      }),
+    );
+  }
+
+  return reviews;
+}
+
 export async function listPurchases(input?: {
   actorId?: string;
   search?: string;
@@ -211,6 +257,7 @@ export async function listPurchases(input?: {
   to?: Date;
   page?: number;
   pageSize?: number;
+  needsReview?: boolean;
 }): Promise<PurchaseHistoryPage> {
   await connectToDatabase();
 
@@ -223,10 +270,25 @@ export async function listPurchases(input?: {
 
   const query: Record<string, unknown> = {};
 
+  const actorId = input?.actorId?.trim();
+  const actorObjectId =
+    actorId && Types.ObjectId.isValid(actorId)
+      ? new Types.ObjectId(actorId)
+      : null;
+
   if (input?.from || input?.to) {
     query.purchaseDate = {
       ...(input.from ? { $gte: input.from } : {}),
       ...(input.to ? { $lte: input.to } : {}),
+    };
+  }
+
+  if (input?.needsReview && actorObjectId) {
+    query.status = "pending";
+    query.createdBy = { $ne: actorObjectId };
+    query.requiredApproverIdsSnapshot = actorObjectId;
+    query.approvals = {
+      $not: { $elemMatch: { partnerId: actorObjectId } },
     };
   }
 
@@ -318,11 +380,11 @@ export async function listPurchases(input?: {
       requiredApprovalCount: toRequiredApprovalCount(purchase),
       approvalCount: approvals.length,
       canReview:
-        purchase.createdBy.toString() !== input?.actorId &&
+        purchase.createdBy.toString() !== actorId &&
         purchase.status === "pending" &&
-        Boolean(input?.actorId) &&
+        Boolean(actorId) &&
         !approvals.some(
-          (approval) => approval.partnerId.toString() === input?.actorId,
+          (approval) => approval.partnerId.toString() === actorId,
         ),
       approvals: approvals.map((approval) => ({
         partnerId: approval.partnerId.toString(),
