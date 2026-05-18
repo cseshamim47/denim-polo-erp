@@ -145,9 +145,9 @@ export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
     }
   }
 
-  const [partners, totalCount, investments, approvedInvestments, balance] =
+  const [allPartners, totalCount, investments, approvedInvestments, balance] =
     await Promise.all([
-      UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
+      UserModel.find({ role: "partner" }).sort({ name: 1 }).lean(),
       InvestmentModel.countDocuments(query),
       InvestmentModel.find(query)
         .sort({ investedAt: -1, createdAt: -1 })
@@ -159,8 +159,9 @@ export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
     ]);
 
   const partnerNameById = new Map(
-    partners.map((partner) => [partner._id.toString(), partner.name]),
+    allPartners.map((partner) => [partner._id.toString(), partner.name]),
   );
+  const activePartners = allPartners.filter((partner) => partner.isActive);
 
   const approvedTotalByPartnerId = new Map<string, number>();
 
@@ -176,12 +177,12 @@ export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
 
   return {
     balance,
-    partners: partners.map((partner) => ({
+    partners: activePartners.map((partner) => ({
       id: partner._id.toString(),
       name: partner.name,
       email: partner.email,
     })),
-    approvedTotals: partners.map((partner) => ({
+    approvedTotals: activePartners.map((partner) => ({
       partnerId: partner._id.toString(),
       partnerName: partner.name,
       totalApprovedInvestment:
@@ -189,6 +190,14 @@ export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
     })),
     investments: investments.map((investment) => {
       const approvals = toApprovals(investment.approvals);
+      const pendingPartnerIds = (investment.requiredApproverIdsSnapshot ?? [])
+        .map((partnerId) => partnerId.toString())
+        .filter(
+          (partnerId) =>
+            !approvals.some(
+              (approval) => approval.partnerId.toString() === partnerId,
+            ),
+        );
 
       return {
         id: investment._id.toString(),
@@ -208,6 +217,10 @@ export async function listInvestmentHistory(input: ListInvestmentHistoryInput) {
           !approvals.some(
             (approval) => approval.partnerId.toString() === input.actorId,
           ),
+        pendingPartnerIds,
+        pendingPartnerNames: pendingPartnerIds.map(
+          (partnerId) => partnerNameById.get(partnerId) ?? "Unknown partner",
+        ),
         approvals: approvals.map((approval) => ({
           partnerId: approval.partnerId.toString(),
           partnerName:

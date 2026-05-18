@@ -14,6 +14,8 @@ import {
 } from "./approval-types";
 
 const initialFilters: ApprovalFiltersState = {
+  view: "mine",
+  pendingPartner: "",
   kind: "",
   owner: "",
   search: "",
@@ -23,6 +25,8 @@ const initialFilters: ApprovalFiltersState = {
 function buildApprovalQuery(filters: ApprovalFiltersState) {
   const params = new URLSearchParams();
 
+  params.set("view", filters.view);
+  if (filters.pendingPartner) params.set("pendingPartner", filters.pendingPartner);
   if (filters.kind) params.set("kind", filters.kind);
   if (filters.owner) params.set("owner", filters.owner);
   if (filters.search.trim()) params.set("search", filters.search.trim());
@@ -230,8 +234,8 @@ export default function ApprovalsPage() {
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
         <h2 className="text-2xl font-semibold tracking-tight">Approvals inbox</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-(--text-secondary)">
-          Review all pending purchase, expense, investment, and asset requests
-          from one place.
+          Review your own pending approvals and track which other partners still
+          have pending approval work.
         </p>
       </section>
 
@@ -251,6 +255,7 @@ export default function ApprovalsPage() {
       <ApprovalList
         data={data}
         isLoading={isLoading}
+        view={filters.view}
         selectedIds={selectedKeys}
         onToggleSelected={toggleSelected}
         onToggleAllVisible={toggleAllVisible}

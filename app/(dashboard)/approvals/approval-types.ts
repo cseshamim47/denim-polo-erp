@@ -20,9 +20,12 @@ export type ApprovalQueueItem = {
   approvalCount: number;
   requiredApprovalCount: number;
   canReview: boolean;
+  pendingPartnerIds: string[];
+  pendingPartnerNames: string[];
 };
 
 export type ApprovalsResponse = {
+  view: "mine" | "partners";
   summary: {
     total: number;
     purchases: number;
@@ -35,10 +38,17 @@ export type ApprovalsResponse = {
     name: string;
     email: string;
   }>;
+  partnerPendingCounts: Array<{
+    partnerId: string;
+    partnerName: string;
+    pendingCount: number;
+  }>;
   items: ApprovalQueueItem[];
 };
 
 export type ApprovalFiltersState = {
+  view: "mine" | "partners";
+  pendingPartner: string;
   kind: "" | ApprovalQueueKind;
   owner: string;
   search: string;

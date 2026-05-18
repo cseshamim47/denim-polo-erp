@@ -31,6 +31,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const queue = await listApprovalQueue({
       actorId: session.user.id,
+      view: searchParams.get("view"),
+      pendingPartner: searchParams.get("pendingPartner"),
       kind: searchParams.get("kind"),
       owner: searchParams.get("owner"),
       search: searchParams.get("search"),

@@ -198,6 +198,23 @@ export async function listExpenseHistory(input: ListExpenseHistoryInput) {
           !approvals.some(
             (approval) => approval.partnerId.toString() === input.actorId,
           ),
+        pendingPartnerIds: (expense.requiredApproverIdsSnapshot ?? [])
+          .map((partnerId) => partnerId.toString())
+          .filter(
+            (partnerId) =>
+              !approvals.some(
+                (approval) => approval.partnerId.toString() === partnerId,
+              ),
+          ),
+        pendingPartnerNames: (expense.requiredApproverIdsSnapshot ?? [])
+          .map((partnerId) => partnerId.toString())
+          .filter(
+            (partnerId) =>
+              !approvals.some(
+                (approval) => approval.partnerId.toString() === partnerId,
+              ),
+          )
+          .map((partnerId) => partnerNameById.get(partnerId) ?? "Unknown partner"),
         approvals: approvals.map((approval) => ({
           partnerId: approval.partnerId.toString(),
           partnerName:

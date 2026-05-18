@@ -34,6 +34,7 @@ function statusClassName(status: ApprovalQueueItem["status"]) {
 export function ApprovalList({
   data,
   isLoading,
+  view,
   selectedIds,
   onToggleSelected,
   onToggleAllVisible,
@@ -43,6 +44,7 @@ export function ApprovalList({
 }: {
   data: ApprovalsResponse | null;
   isLoading: boolean;
+  view: "mine" | "partners";
   selectedIds: string[];
   onToggleSelected: (selectionKey: string, checked: boolean) => void;
   onToggleAllVisible: () => void;
@@ -55,30 +57,35 @@ export function ApprovalList({
 }) {
   const items = data?.items ?? [];
   const allVisibleSelected =
-    items.length > 0 && items.every((item) => selectedIds.includes(item.selectionKey));
+    items.length > 0 &&
+    items.every((item) => selectedIds.includes(item.selectionKey));
 
   return (
     <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
         <div>
-          <h3 className="text-xl font-semibold tracking-tight">Pending approvals</h3>
+          <h3 className="text-xl font-semibold tracking-tight">
+            {view === "mine" ? "My pending approvals" : "Other partners pending"}
+          </h3>
           <p className="mt-1 text-sm text-(--text-secondary)">
             {isLoading ? "Loading..." : `${items.length} visible item(s)`}
           </p>
         </div>
       </div>
 
-      <ApprovalSelectionBar
-        selectedCount={selectedIds.length}
-        selectableCount={items.length}
-        onApproveSelected={() => {
-          void onApproveSelected();
-        }}
-        onToggleAll={onToggleAllVisible}
-        allSelected={allVisibleSelected}
-        isBusy={isReviewSubmitting}
-        label="approval(s)"
-      />
+      {view === "mine" ? (
+        <ApprovalSelectionBar
+          selectedCount={selectedIds.length}
+          selectableCount={items.length}
+          onApproveSelected={() => {
+            void onApproveSelected();
+          }}
+          onToggleAll={onToggleAllVisible}
+          allSelected={allVisibleSelected}
+          isBusy={isReviewSubmitting}
+          label="approval(s)"
+        />
+      ) : null}
 
       <div className="mt-4 grid gap-4 md:hidden">
         {isLoading ? (
@@ -96,13 +103,17 @@ export function ApprovalList({
               <CardHeader className="px-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selectedIds.includes(item.selectionKey)}
-                      onCheckedChange={(checked) =>
-                        onToggleSelected(item.selectionKey, checked === true)
-                      }
-                      aria-label={`Select ${item.title}`}
-                    />
+                    {view === "mine" ? (
+                      <Checkbox
+                        checked={selectedIds.includes(item.selectionKey)}
+                        onCheckedChange={(checked) =>
+                          onToggleSelected(item.selectionKey, checked === true)
+                        }
+                        aria-label={`Select ${item.title}`}
+                      />
+                    ) : (
+                      <div className="size-4 shrink-0" />
+                    )}
                     <div className="space-y-1">
                       <CardTitle className="text-base">{item.title}</CardTitle>
                       <CardDescription>
@@ -139,26 +150,33 @@ export function ApprovalList({
                   <p>
                     {item.approvalCount}/{item.requiredApprovalCount} approvals
                   </p>
+                  <p>Waiting on: {item.pendingPartnerNames.join(", ") || "None"}</p>
                   {item.note?.trim() ? <p>{item.note}</p> : null}
                 </div>
               </CardContent>
-              <CardFooter className="grid grid-cols-2 gap-2 px-4">
-                <Button
-                  size="sm"
-                  disabled={isReviewSubmitting}
-                  onClick={() => void onReviewOne(item, "approved")}
-                >
-                  Approve
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={isReviewSubmitting}
-                  onClick={() => void onReviewOne(item, "rejected")}
-                >
-                  Reject
-                </Button>
-              </CardFooter>
+              {view === "mine" ? (
+                <CardFooter className="grid grid-cols-2 gap-2 px-4">
+                  <Button
+                    size="sm"
+                    disabled={isReviewSubmitting}
+                    onClick={() => void onReviewOne(item, "approved")}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={isReviewSubmitting}
+                    onClick={() => void onReviewOne(item, "rejected")}
+                  >
+                    Reject
+                  </Button>
+                </CardFooter>
+              ) : (
+                <CardFooter className="px-4 text-xs text-(--text-secondary)">
+                  Waiting on {item.pendingPartnerNames.join(", ") || "no one"}.
+                </CardFooter>
+              )}
             </Card>
           ))
         ) : (
@@ -171,16 +189,18 @@ export function ApprovalList({
       </div>
 
       <div className="mt-4 hidden overflow-x-auto rounded-[1.2rem] ring-1 ring-(--stroke-soft) md:block">
-        <table className="w-full min-w-240 text-sm">
+        <table className="w-full min-w-260 text-sm">
           <thead className="bg-(--surface-accent-soft)">
             <tr>
               <th className="px-3 py-2 text-center font-semibold">
-                <Checkbox
-                  checked={allVisibleSelected}
-                  onCheckedChange={() => onToggleAllVisible()}
-                  aria-label="Select all visible approvals"
-                  disabled={items.length === 0}
-                />
+                {view === "mine" ? (
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={() => onToggleAllVisible()}
+                    aria-label="Select all visible approvals"
+                    disabled={items.length === 0}
+                  />
+                ) : null}
               </th>
               <th className="px-3 py-2 text-left font-semibold">Type</th>
               <th className="px-3 py-2 text-left font-semibold">Title</th>
@@ -188,14 +208,17 @@ export function ApprovalList({
               <th className="px-3 py-2 text-left font-semibold">Date</th>
               <th className="px-3 py-2 text-right font-semibold">Amount</th>
               <th className="px-3 py-2 text-left font-semibold">Progress</th>
+              <th className="px-3 py-2 text-left font-semibold">Waiting on</th>
               <th className="px-3 py-2 text-left font-semibold">Note</th>
-              <th className="px-3 py-2 text-center font-semibold">Action</th>
+              <th className="px-3 py-2 text-center font-semibold">
+                {view === "mine" ? "Action" : "Status"}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
             {isLoading ? (
               <tr>
-                <td className="px-3 py-8" colSpan={9}>
+                <td className="px-3 py-8" colSpan={10}>
                   <Spinner label="Loading approval queue..." />
                 </td>
               </tr>
@@ -203,13 +226,15 @@ export function ApprovalList({
               items.map((item) => (
                 <tr key={item.selectionKey} className="align-top">
                   <td className="px-3 py-3 text-center">
-                    <Checkbox
-                      checked={selectedIds.includes(item.selectionKey)}
-                      onCheckedChange={(checked) =>
-                        onToggleSelected(item.selectionKey, checked === true)
-                      }
-                      aria-label={`Select ${item.title}`}
-                    />
+                    {view === "mine" ? (
+                      <Checkbox
+                        checked={selectedIds.includes(item.selectionKey)}
+                        onCheckedChange={(checked) =>
+                          onToggleSelected(item.selectionKey, checked === true)
+                        }
+                        aria-label={`Select ${item.title}`}
+                      />
+                    ) : null}
                   </td>
                   <td className="px-3 py-3">
                     <span className="inline-flex rounded-full bg-(--surface-accent-soft) px-2.5 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
@@ -235,26 +260,35 @@ export function ApprovalList({
                     {item.approvalCount}/{item.requiredApprovalCount}
                   </td>
                   <td className="px-3 py-3 text-xs text-(--text-secondary)">
+                    {item.pendingPartnerNames.join(", ") || "-"}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-(--text-secondary)">
                     {(item.note ?? "").trim() || "-"}
                   </td>
                   <td className="px-3 py-3">
-                    <div className="flex justify-center gap-2">
-                      <Button
-                        size="sm"
-                        disabled={isReviewSubmitting}
-                        onClick={() => void onReviewOne(item, "approved")}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={isReviewSubmitting}
-                        onClick={() => void onReviewOne(item, "rejected")}
-                      >
-                        Reject
-                      </Button>
-                    </div>
+                    {view === "mine" ? (
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          size="sm"
+                          disabled={isReviewSubmitting}
+                          onClick={() => void onReviewOne(item, "approved")}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={isReviewSubmitting}
+                          onClick={() => void onReviewOne(item, "rejected")}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="text-center text-xs text-(--text-secondary)">
+                        Pending
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))

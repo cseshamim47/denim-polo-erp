@@ -39,6 +39,8 @@ export type PurchaseHistoryRecord = {
   requiredApprovalCount: number;
   approvalCount: number;
   canReview: boolean;
+  pendingPartnerIds: string[];
+  pendingPartnerNames: string[];
   approvals: Array<{
     partnerId: string;
     partnerName: string;
@@ -258,6 +260,7 @@ export async function listPurchases(input?: {
   page?: number;
   pageSize?: number;
   needsReview?: boolean;
+  status?: string | null;
 }): Promise<PurchaseHistoryPage> {
   await connectToDatabase();
 
@@ -290,6 +293,11 @@ export async function listPurchases(input?: {
     query.approvals = {
       $not: { $elemMatch: { partnerId: actorObjectId } },
     };
+  } else if (
+    input?.status &&
+    ["pending", "approved", "rejected"].includes(input.status)
+  ) {
+    query.status = input.status;
   }
 
   const purchases = await PurchaseModel.find(query)
@@ -321,6 +329,15 @@ export async function listPurchases(input?: {
   const creatorIds = Array.from(
     new Set(purchases.map((purchase) => purchase.createdBy.toString())),
   );
+  const requiredApproverIds = Array.from(
+    new Set(
+      purchases.flatMap((purchase) =>
+        (purchase.requiredApproverIdsSnapshot ?? []).map((partnerId) =>
+          partnerId.toString(),
+        ),
+      ),
+    ),
+  );
   const approvalPartnerIds = Array.from(
     new Set(
       purchases.flatMap((purchase) =>
@@ -331,7 +348,7 @@ export async function listPurchases(input?: {
     ),
   );
   const partnerIds = Array.from(
-    new Set([...creatorIds, ...approvalPartnerIds]),
+    new Set([...creatorIds, ...requiredApproverIds, ...approvalPartnerIds]),
   );
 
   const [products, partners] = await Promise.all([
@@ -359,6 +376,14 @@ export async function listPurchases(input?: {
       ? (productNameById.get(variant.productId.toString()) ?? "Unknown product")
       : "Unknown product";
     const approvals = toApprovals(purchase.approvals);
+    const pendingPartnerIds = (
+      purchase.requiredApproverIdsSnapshot ?? []
+    )
+      .map((partnerId) => partnerId.toString())
+      .filter(
+        (partnerId) =>
+          !approvals.some((approval) => approval.partnerId.toString() === partnerId),
+      );
 
     return {
       id: purchase._id.toString(),
@@ -386,6 +411,10 @@ export async function listPurchases(input?: {
         !approvals.some(
           (approval) => approval.partnerId.toString() === actorId,
         ),
+      pendingPartnerIds,
+      pendingPartnerNames: pendingPartnerIds.map(
+        (partnerId) => partnerNameById.get(partnerId) ?? "Unknown partner",
+      ),
       approvals: approvals.map((approval) => ({
         partnerId: approval.partnerId.toString(),
         partnerName:

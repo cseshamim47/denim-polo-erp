@@ -195,6 +195,14 @@ export async function listAssetHistory(input: ListAssetHistoryInput) {
     },
     assets: assets.map((asset) => {
       const approvals = toApprovals(asset.approvals);
+      const pendingPartnerIds = (asset.requiredApproverIdsSnapshot ?? [])
+        .map((partnerId) => partnerId.toString())
+        .filter(
+          (partnerId) =>
+            !approvals.some(
+              (approval) => approval.partnerId.toString() === partnerId,
+            ),
+        );
 
       return {
         id: asset._id.toString(),
@@ -216,6 +224,10 @@ export async function listAssetHistory(input: ListAssetHistoryInput) {
           !approvals.some(
             (approval) => approval.partnerId.toString() === input.actorId,
           ),
+        pendingPartnerIds,
+        pendingPartnerNames: pendingPartnerIds.map(
+          (partnerId) => partnerNameById.get(partnerId) ?? "Unknown partner",
+        ),
         approvals: approvals.map((approval) => ({
           partnerId: approval.partnerId.toString(),
           partnerName:

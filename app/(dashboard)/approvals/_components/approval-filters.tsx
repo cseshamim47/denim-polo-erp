@@ -43,7 +43,8 @@ export function ApprovalFilters({
         <div>
           <h3 className="text-xl font-semibold tracking-tight">Filters</h3>
           <p className="mt-1 text-sm text-(--text-secondary)">
-            Narrow queue by module, owner, keyword, or sort order.
+            Switch between your queue and partner backlog, then narrow by module,
+            owner, keyword, or sort order.
           </p>
         </div>
         <Button
@@ -51,6 +52,8 @@ export function ApprovalFilters({
           variant="outline"
           onClick={() =>
             onChange({
+              view: "mine",
+              pendingPartner: "",
               kind: "",
               owner: "",
               search: "",
@@ -59,6 +62,43 @@ export function ApprovalFilters({
           }
         >
           Reset
+        </Button>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={filters.view === "mine" ? "default" : "outline"}
+          className={
+            filters.view === "mine"
+              ? "bg-foreground text-white"
+              : "border-amber-200 bg-white text-foreground"
+          }
+          onClick={() =>
+            onChange({
+              ...filters,
+              view: "mine",
+              pendingPartner: "",
+            })
+          }
+        >
+          My pending approvals
+        </Button>
+        <Button
+          type="button"
+          variant={filters.view === "partners" ? "default" : "outline"}
+          className={
+            filters.view === "partners"
+              ? "bg-amber-500 text-white hover:bg-amber-600"
+              : "border-amber-200 bg-white text-foreground"
+          }
+          onClick={() =>
+            onChange({
+              ...filters,
+              view: "partners",
+            })
+          }
+        >
+          Other partners pending
         </Button>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -129,8 +169,8 @@ export function ApprovalFilters({
               <span>
                 {filters.owner
                   ? (data?.partners.find((partner) => partner.id === filters.owner)
-                      ?.name ?? "All partners")
-                  : "All partners"}
+                      ?.name ?? "All owners")
+                  : "All owners"}
               </span>
               <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
             </button>
@@ -145,13 +185,13 @@ export function ApprovalFilters({
                 <CommandEmpty>No owner found.</CommandEmpty>
                 <CommandGroup>
                   <CommandItem
-                    value="All partners"
+                    value="All owners"
                     onSelect={() => {
                       onChange({ ...filters, owner: "" });
                       setOpenField(null);
                     }}
                   >
-                    All partners
+                    All owners
                   </CommandItem>
                   {(data?.partners ?? []).map((partner) => (
                     <CommandItem
@@ -170,6 +210,66 @@ export function ApprovalFilters({
             </Command>
           </PopoverContent>
         </Popover>
+
+        {filters.view === "partners" ? (
+          <Popover
+            open={openField === "pending-partner"}
+            onOpenChange={(open) => setOpenField(open ? "pending-partner" : null)}
+          >
+            <PopoverTrigger asChild>
+              <button
+                className="field flex items-center justify-between rounded-2xl px-4 py-3 text-left"
+                type="button"
+              >
+                <span>
+                  {filters.pendingPartner
+                    ? (data?.partners.find(
+                        (partner) => partner.id === filters.pendingPartner,
+                      )?.name ?? "All pending partners")
+                    : "All pending partners"}
+                </span>
+                <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="w-[--radix-popover-trigger-width] p-0"
+              align="start"
+            >
+              <Command>
+                <CommandInput placeholder="Search pending partner..." />
+                <CommandList>
+                  <CommandEmpty>No partner found.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="All pending partners"
+                      onSelect={() => {
+                        onChange({ ...filters, pendingPartner: "" });
+                        setOpenField(null);
+                      }}
+                    >
+                      All pending partners
+                    </CommandItem>
+                    {(data?.partnerPendingCounts ?? []).map((partner) => (
+                      <CommandItem
+                        key={partner.partnerId}
+                        value={partner.partnerName}
+                        onSelect={() => {
+                          onChange({
+                            ...filters,
+                            pendingPartner: partner.partnerId,
+                          });
+                          setOpenField(null);
+                        }}
+                      >
+                        {partner.partnerName} ({partner.pendingCount})
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        ) : null}
 
         <Popover
           open={openField === "sort"}

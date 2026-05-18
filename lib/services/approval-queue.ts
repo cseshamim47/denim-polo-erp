@@ -1,3 +1,4 @@
+import UserModel from "@/models/User";
 import { listAssetHistory } from "@/lib/services/asset-history";
 import { listExpenseHistory } from "@/lib/services/expense-history";
 import { listInvestmentHistory } from "@/lib/services/investment-history";
@@ -36,9 +37,12 @@ export type ApprovalQueueItem = {
   approvalCount: number;
   requiredApprovalCount: number;
   canReview: boolean;
+  pendingPartnerIds: string[];
+  pendingPartnerNames: string[];
 };
 
 type ApprovalQueueSort = "newest" | "oldest";
+type ApprovalQueueView = "mine" | "partners";
 
 function matchesSearch(item: ApprovalQueueItem, search: string) {
   const normalized = search.trim().toLocaleLowerCase();
@@ -72,59 +76,69 @@ function mapPurchaseItem(record: PurchaseHistoryRecord): ApprovalQueueItem {
     approvalCount: record.approvalCount,
     requiredApprovalCount: record.requiredApprovalCount,
     canReview: record.canReview,
+    pendingPartnerIds: record.pendingPartnerIds,
+    pendingPartnerNames: record.pendingPartnerNames,
   };
 }
 
 export async function listApprovalQueue(input: {
   actorId: string;
+  view?: string | null;
+  pendingPartner?: string | null;
   kind?: string | null;
   owner?: string | null;
   search?: string | null;
   sort?: string | null;
 }) {
+  const view: ApprovalQueueView = input.view === "partners" ? "partners" : "mine";
+  const pendingPartner = input.pendingPartner?.trim();
   const selectedKind = input.kind?.trim() as ApprovalQueueKind | undefined;
   const selectedOwner = input.owner?.trim();
   const search = input.search?.trim() ?? "";
   const sort: ApprovalQueueSort = input.sort === "oldest" ? "oldest" : "newest";
 
-  const [purchases, expenses, investments, assets] = await Promise.all([
+  const [allPartners, purchases, expenses, investments, assets] = await Promise.all([
+    UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
     listPurchases({
       actorId: input.actorId,
       page: 1,
       pageSize: 100,
-      needsReview: true,
+      needsReview: view === "mine",
+      status: view === "partners" ? "pending" : null,
     }),
     listExpenseHistory({
       actorId: input.actorId,
       page: 1,
       pageSize: 100,
-      needsReview: true,
+      needsReview: view === "mine",
+      status: view === "partners" ? "pending" : null,
     }),
     listInvestmentHistory({
       actorId: input.actorId,
       page: 1,
       pageSize: 100,
-      needsReview: true,
+      needsReview: view === "mine",
+      status: view === "partners" ? "pending" : null,
     }),
     listAssetHistory({
       actorId: input.actorId,
       page: 1,
       pageSize: 100,
-      needsReview: true,
+      needsReview: view === "mine",
+      status: view === "partners" ? "pending" : null,
     }),
   ]);
 
-  const partners = new Map<string, { id: string; name: string; email: string }>();
-
-  for (const group of [
-    expenses.partners,
-    investments.partners,
-    assets.partners,
-  ]) {
-    for (const partner of group) {
-      partners.set(partner.id, partner);
-    }
-  }
+  const partners = new Map(
+    allPartners.map((partner) => [
+      partner._id.toString(),
+      {
+        id: partner._id.toString(),
+        name: partner.name,
+        email: partner.email,
+      },
+    ]),
+  );
 
   const purchaseItems = purchases.items.map(mapPurchaseItem);
   const expenseItems = expenses.expenses.map((expense) => ({
@@ -143,6 +157,8 @@ export async function listApprovalQueue(input: {
     approvalCount: expense.approvalCount,
     requiredApprovalCount: expense.requiredApprovalCount,
     canReview: expense.canReview,
+    pendingPartnerIds: expense.pendingPartnerIds,
+    pendingPartnerNames: expense.pendingPartnerNames,
   }));
   const investmentItems = investments.investments.map((investment) => ({
     id: investment.id,
@@ -160,6 +176,8 @@ export async function listApprovalQueue(input: {
     approvalCount: investment.approvalCount,
     requiredApprovalCount: investment.requiredApprovalCount,
     canReview: investment.canReview,
+    pendingPartnerIds: investment.pendingPartnerIds,
+    pendingPartnerNames: investment.pendingPartnerNames,
   }));
   const assetItems = assets.assets.map((asset) => ({
     id: asset.id,
@@ -177,6 +195,8 @@ export async function listApprovalQueue(input: {
     approvalCount: asset.approvalCount,
     requiredApprovalCount: asset.requiredApprovalCount,
     canReview: asset.canReview,
+    pendingPartnerIds: asset.pendingPartnerIds,
+    pendingPartnerNames: asset.pendingPartnerNames,
   }));
 
   const allItems = [
@@ -185,8 +205,33 @@ export async function listApprovalQueue(input: {
     ...investmentItems,
     ...assetItems,
   ];
+  const actorFilteredItems =
+    view === "mine"
+      ? allItems
+      : allItems
+          .map((item) => {
+            const pendingPartners = item.pendingPartnerIds
+              .map((partnerId, index) => ({
+                partnerId,
+                partnerName: item.pendingPartnerNames[index] ?? "Unknown partner",
+              }))
+              .filter((partner) => partner.partnerId !== input.actorId);
 
-  const items = allItems
+            return {
+              ...item,
+              pendingPartnerIds: pendingPartners.map((partner) => partner.partnerId),
+              pendingPartnerNames: pendingPartners.map((partner) => partner.partnerName),
+            };
+          })
+          .filter((item) => item.pendingPartnerIds.length > 0);
+  const filteredByPendingPartner =
+    view === "partners" && pendingPartner
+      ? actorFilteredItems.filter((item) =>
+          item.pendingPartnerIds.includes(pendingPartner),
+        )
+      : actorFilteredItems;
+
+  const items = filteredByPendingPartner
     .filter((item) => (selectedKind ? item.kind === selectedKind : true))
     .filter((item) => (selectedOwner ? item.ownerId === selectedOwner : true))
     .filter((item) => matchesSearch(item, search))
@@ -196,18 +241,44 @@ export async function listApprovalQueue(input: {
 
       return sort === "oldest" ? delta : -delta;
     });
+  const partnerPendingCounts = Array.from(
+    actorFilteredItems.reduce((map, item) => {
+      for (const [index, partnerId] of item.pendingPartnerIds.entries()) {
+        if (partnerId === input.actorId) {
+          continue;
+        }
+
+        const current = map.get(partnerId) ?? {
+          partnerId,
+          partnerName: item.pendingPartnerNames[index] ?? "Unknown partner",
+          pendingCount: 0,
+        };
+
+        current.pendingCount += 1;
+        map.set(partnerId, current);
+      }
+
+      return map;
+    }, new Map<string, { partnerId: string; partnerName: string; pendingCount: number }>()),
+  )
+    .map((entry) => entry[1])
+    .sort((left, right) =>
+      right.pendingCount - left.pendingCount || left.partnerName.localeCompare(right.partnerName),
+    );
 
   return {
+    view,
     summary: {
-      total: allItems.length,
-      purchases: purchaseItems.length,
-      expenses: expenseItems.length,
-      investments: investmentItems.length,
-      assets: assetItems.length,
+      total: actorFilteredItems.length,
+      purchases: actorFilteredItems.filter((item) => item.kind === "purchases").length,
+      expenses: actorFilteredItems.filter((item) => item.kind === "expenses").length,
+      investments: actorFilteredItems.filter((item) => item.kind === "investments").length,
+      assets: actorFilteredItems.filter((item) => item.kind === "assets").length,
     },
     partners: Array.from(partners.values()).sort((left, right) =>
       left.name.localeCompare(right.name),
     ),
+    partnerPendingCounts,
     items,
   };
 }

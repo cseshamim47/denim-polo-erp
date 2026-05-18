@@ -252,13 +252,15 @@ describe("approval route contracts", () => {
     const { GET } = await import("../../app/api/approvals/route");
     const response = await GET(
       new Request(
-        "http://localhost:3000/api/approvals?kind=expenses&owner=507f1f77bcf86cd799439012&search=fuel&sort=oldest",
+        "http://localhost:3000/api/approvals?view=partners&pendingPartner=507f1f77bcf86cd799439013&kind=expenses&owner=507f1f77bcf86cd799439012&search=fuel&sort=oldest",
       ),
     );
 
     expect(response.status).toBe(200);
     expect(listApprovalQueue).toHaveBeenCalledWith({
       actorId: "507f1f77bcf86cd799439011",
+      view: "partners",
+      pendingPartner: "507f1f77bcf86cd799439013",
       kind: "expenses",
       owner: "507f1f77bcf86cd799439012",
       search: "fuel",
