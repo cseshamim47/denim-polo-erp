@@ -23,6 +23,8 @@ const partnerOnlyPrefixes = [
 
 const authRequiredPrefixes = [
   "/sales",
+  "/settings",
+  "/api/settings",
   "/api/sales",
   "/api/products",
   "/api/variants",
@@ -78,6 +80,7 @@ export const config = {
     "/expenses/:path*",
     "/investments/:path*",
     "/assets/:path*",
+    "/settings/:path*",
     "/returns/:path*",
     "/reports/:path*",
     "/api/:path*",

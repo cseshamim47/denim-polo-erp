@@ -6,11 +6,16 @@ import { z } from "zod";
 
 import { connectToDatabase } from "@/lib/db";
 import UserModel, { type AuthProvider, type UserRole } from "@/models/User";
+import {
+  buildSessionUser,
+  findActiveUserByEmail,
+  normalizeUserEmail,
+  verifyUserPassword,
+} from "@/lib/services/user-auth";
 
 const credentialsSchema = z.object({
-  mode: z.literal("salesman"),
   email: z.email().trim().toLowerCase(),
-  password: z.string().optional(),
+  password: z.string().trim().min(1),
 });
 
 function getPartnerEmailAllowList() {
@@ -18,16 +23,6 @@ function getPartnerEmailAllowList() {
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
-}
-
-function getSalesmanCredentials() {
-  return {
-    email: (process.env.SALESMAN_EMAIL ?? "").trim().toLowerCase(),
-    password: process.env.SALESMAN_PASSWORD ?? "",
-    name:
-      (process.env.SALESMAN_NAME ?? "Default Salesman").trim() ||
-      "Default Salesman",
-  };
 }
 
 function buildPartnerName(email: string) {
@@ -93,7 +88,6 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "ERP Login",
       credentials: {
-        mode: { label: "Mode", type: "text" },
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
@@ -104,34 +98,24 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const salesmanCredentials = getSalesmanCredentials();
+        await connectToDatabase();
 
-        if (
-          parsed.data.email !== salesmanCredentials.email ||
-          !parsed.data.password ||
-          parsed.data.password !== salesmanCredentials.password
-        ) {
+        const user = await findActiveUserByEmail(parsed.data.email);
+
+        if (!user?.passwordHash) {
           return null;
         }
 
-        const user = await upsertUser({
-          email: salesmanCredentials.email,
-          role: "salesman",
-          name: salesmanCredentials.name,
-          authProvider: "credentials",
-        });
+        const isPasswordValid = await verifyUserPassword(
+          parsed.data.password,
+          user.passwordHash,
+        );
 
-        if (!user) {
+        if (!isPasswordValid) {
           return null;
         }
 
-        return {
-          id: user._id.toString(),
-          email: user.email,
-          name: user.name,
-          image: user.image ?? undefined,
-          role: user.role,
-        };
+        return buildSessionUser(user);
       },
     }),
   ],
@@ -141,7 +125,7 @@ export const authOptions: NextAuthOptions = {
         return true;
       }
 
-      const email = user.email?.trim().toLowerCase();
+      const email = normalizeUserEmail(user.email ?? "");
 
       if (!email) {
         return false;
@@ -184,6 +168,8 @@ export const authOptions: NextAuthOptions = {
 
       token.id = dbUser._id.toString();
       token.role = dbUser.role;
+      token.name = dbUser.name;
+      token.picture = dbUser.image ?? undefined;
 
       return token;
     },
