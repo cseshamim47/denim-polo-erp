@@ -92,6 +92,9 @@ type Variant = {
   size: string;
   stockQty: number;
   sellingPrice: number;
+  inventoryMode: "unit" | "volume" | "packaging";
+  unitLabel: string;
+  allowDecimalQty: boolean;
   deleteRequest?: DeleteRequest;
   updateRequest?: UpdateRequest;
 };
@@ -231,6 +234,9 @@ export default function ProductsPage() {
     color: "",
     sizesText: "",
     sellingPrice: 0,
+    inventoryMode: "unit" as "unit" | "volume" | "packaging",
+    unitLabel: "PCS",
+    allowDecimalQty: false,
   });
   const [productNameSearch, setProductNameSearch] = useState("");
   const [productCategorySearch, setProductCategorySearch] = useState("");
@@ -666,6 +672,9 @@ export default function ProductsPage() {
         color: variantForm.color.trim(),
         sizes: normalizeSizes(variantForm.sizesText),
         sellingPrice: variantForm.sellingPrice,
+        inventoryMode: variantForm.inventoryMode,
+        unitLabel: variantForm.unitLabel,
+        allowDecimalQty: variantForm.allowDecimalQty,
       }),
     });
 
@@ -684,6 +693,9 @@ export default function ProductsPage() {
       color: "",
       sizesText: "",
       sellingPrice: 0,
+      inventoryMode: "unit",
+      unitLabel: "PCS",
+      allowDecimalQty: false,
     }));
     setVariantErrors({});
     toast.success(`Variant created (${payload?.createdCount ?? 0} size(s)).`);
@@ -1302,6 +1314,69 @@ export default function ProductsPage() {
                   </p>
                 ) : null}
               </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-sm text-white/80">
+                  Inventory mode
+                </label>
+                <select
+                  className="field text-foreground"
+                  value={variantForm.inventoryMode}
+                  onChange={(event) => {
+                    const nextMode = event.target.value as
+                      | "unit"
+                      | "volume"
+                      | "packaging";
+                    setVariantForm((current) => ({
+                      ...current,
+                      inventoryMode: nextMode,
+                      unitLabel:
+                        nextMode === "volume"
+                          ? "ML"
+                          : nextMode === "packaging"
+                            ? "PCS"
+                            : "PCS",
+                    }));
+                  }}
+                >
+                  <option value="unit">Standard item</option>
+                  <option value="volume">Perfume liquid</option>
+                  <option value="packaging">Bottle / packaging</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm text-white/80">
+                  Unit label
+                </label>
+                <input
+                  className="field text-foreground"
+                  placeholder="PCS or ML"
+                  value={variantForm.unitLabel}
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      unitLabel: event.target.value.toUpperCase(),
+                    }))
+                  }
+                />
+              </div>
+
+              <label className="mt-6 flex items-center gap-3 text-sm text-white/80 md:mt-0">
+                <input
+                  checked={variantForm.allowDecimalQty}
+                  type="checkbox"
+                  onChange={(event) =>
+                    setVariantForm((current) => ({
+                      ...current,
+                      allowDecimalQty: event.target.checked,
+                    }))
+                  }
+                />
+                Allow decimal quantity
+              </label>
             </div>
           </div>
 
@@ -2077,6 +2152,12 @@ export default function ProductsPage() {
                               {currency(variant.sellingPrice)}
                             </span>
                           </p>
+                          <p className="col-span-2 text-(--text-secondary)">
+                            Mode:{" "}
+                            <span className="font-medium uppercase text-foreground">
+                              {variant.inventoryMode} · {variant.unitLabel}
+                            </span>
+                          </p>
                         </div>
 
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -2210,6 +2291,7 @@ export default function ProductsPage() {
                         <TableHead className="font-semibold">Product</TableHead>
                         <TableHead className="font-semibold">Color</TableHead>
                         <TableHead className="font-semibold">Size</TableHead>
+                        <TableHead className="font-semibold">Mode</TableHead>
                         <TableHead className="text-center font-semibold">
                           Stock
                         </TableHead>
@@ -2253,6 +2335,10 @@ export default function ProductsPage() {
                             </TableCell>
                             <TableCell className="text-(--text-secondary)">
                               {variant.size}
+                            </TableCell>
+                            <TableCell className="text-(--text-secondary)">
+                              {variant.inventoryMode.toUpperCase()} ·{" "}
+                              {variant.unitLabel}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge

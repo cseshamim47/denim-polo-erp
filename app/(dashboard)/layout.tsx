@@ -14,6 +14,7 @@ const navItems: DashboardNavItem[] = [
   { href: "/products", label: "Products" },
   { href: "/purchases", label: "Purchases" },
   { href: "/approvals", label: "Approvals" },
+  { href: "/perfumes", label: "Perfumes" },
   { href: "/expenses", label: "Expenses" },
   { href: "/investments", label: "Investments" },
   { href: "/assets", label: "Assets" },

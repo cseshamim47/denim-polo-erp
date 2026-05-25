@@ -15,16 +15,69 @@ type Variant = {
   size: string;
   sku: string;
   stockQty: number;
+  avgCost: number;
   sellingPrice: number;
+  inventoryMode: "unit" | "volume" | "packaging";
+  unitLabel: string;
+  allowDecimalQty: boolean;
 };
 
-type CartLine = {
+type PerfumeRule = {
+  id: string;
+  perfumeVariantId: string;
+  perfumeLabel: string;
+  bottleVariantId: string;
+  bottleLabel: string;
+  fillMl: number;
+  bottleSellingPrice: number;
+  isActive: boolean;
+};
+
+type PerfumePricingPayload = {
+  rules: PerfumeRule[];
+  perfumes: Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    size: string;
+    stockQty: number;
+    unitLabel: string;
+  }>;
+  bottles: Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    size: string;
+    stockQty: number;
+    unitLabel: string;
+    defaultSellingPrice: number;
+  }>;
+};
+
+type StandardCartLine = {
+  mode: "standard";
   variantId: string;
   label: string;
   sku: string;
   qty: number;
   sellingPrice: number;
 };
+
+type PerfumeCartLine = {
+  mode: "perfume";
+  pricingRuleId: string;
+  perfumeVariantId: string;
+  bottleVariantId: string;
+  label: string;
+  sku: string;
+  soldMl: number;
+  bottleLabel: string;
+  sellingPrice: number;
+};
+
+type CartLine = StandardCartLine | PerfumeCartLine;
 
 type SaleHistoryItem = {
   id: string;
@@ -63,6 +116,10 @@ export default function NewSalePage() {
   const [productId, setProductId] = useState("");
   const [variantId, setVariantId] = useState("");
   const [qty, setQty] = useState(1);
+  const [perfumeVariantId, setPerfumeVariantId] = useState("");
+  const [perfumeRuleId, setPerfumeRuleId] = useState("");
+  const [perfumeMode, setPerfumeMode] = useState<"preset" | "custom">("preset");
+  const [customPerfumeMl, setCustomPerfumeMl] = useState(5);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [search, setSearch] = useState("");
   const [skuInput, setSkuInput] = useState("");
@@ -82,6 +139,11 @@ export default function NewSalePage() {
   const [historyFromDate, setHistoryFromDate] = useState("");
   const [historyToDate, setHistoryToDate] = useState("");
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [perfumePricing, setPerfumePricing] = useState<PerfumePricingPayload>({
+    rules: [],
+    perfumes: [],
+    bottles: [],
+  });
   const ignoreNextSkuBlurRef = useRef(false);
   const deferredSearch = useDeferredValue(search);
   const deferredHistorySearch = useDeferredValue(historySearch);
@@ -89,8 +151,8 @@ export default function NewSalePage() {
   useEffect(() => {
     async function loadProducts() {
       const [productsResponse, variantsResponse] = await Promise.all([
-        fetch("/api/products", { cache: "no-store" }),
-        fetch("/api/variants", { cache: "no-store" }),
+        fetch("/api/products?forOptions=1", { cache: "no-store" }),
+        fetch("/api/variants?forOptions=1", { cache: "no-store" }),
       ]);
 
       const payload = (await productsResponse.json()) as {
@@ -114,19 +176,38 @@ export default function NewSalePage() {
   }, []);
 
   useEffect(() => {
-    async function loadVariants() {
-      const query = deferredSearch
-        ? `?search=${encodeURIComponent(deferredSearch)}`
-        : productId
-          ? `?productId=${encodeURIComponent(productId)}`
-          : "";
+    async function loadPerfumePricing() {
+      const response = await fetch("/api/perfume-pricing", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as
+        | PerfumePricingPayload
+        | { error?: string };
 
-      if (!query) {
+      if (response.ok && "rules" in payload) {
+        setPerfumePricing(payload);
+      }
+    }
+
+    void loadPerfumePricing();
+  }, []);
+
+  useEffect(() => {
+    async function loadVariants() {
+      const params = new URLSearchParams({ inventoryMode: "unit" });
+
+      if (deferredSearch) {
+        params.set("search", deferredSearch);
+      } else if (productId) {
+        params.set("productId", productId);
+      }
+
+      if (!deferredSearch && !productId) {
         setVariants([]);
         return;
       }
 
-      const response = await fetch(`/api/variants${query}`, {
+      const response = await fetch(`/api/variants?${params.toString()}`, {
         cache: "no-store",
       });
       const payload = (await response.json()) as { variants?: Variant[] };
@@ -203,7 +284,17 @@ export default function NewSalePage() {
   }, []);
 
   const categories = Array.from(
-    new Set(products.map((product) => product.category)),
+    new Set(
+      products
+        .filter((product) =>
+          allVariants.some(
+            (variant) =>
+              variant.productId === product.id &&
+              variant.inventoryMode === "unit",
+          ),
+        )
+        .map((product) => product.category),
+    ),
   );
   const filteredProducts = category
     ? products.filter((product) => product.category === category)
@@ -211,15 +302,21 @@ export default function NewSalePage() {
   const selectedVariant = variants.find((variant) => variant.id === variantId);
   const skuOptions = skuInput
     ? allVariants
-        .filter((variant) =>
+        .filter(
+          (variant) =>
+            variant.inventoryMode === "unit" &&
           variant.sku
             .toLocaleLowerCase()
             .includes(skuInput.toLocaleLowerCase()),
         )
         .slice(0, 40)
-    : allVariants.slice(0, 40);
+    : allVariants.filter((variant) => variant.inventoryMode === "unit").slice(0, 40);
   const total = cart.reduce(
-    (sum, line) => sum + line.qty * line.sellingPrice,
+    (sum, line) =>
+      sum +
+      (line.mode === "standard"
+        ? line.qty * line.sellingPrice
+        : line.sellingPrice),
     0,
   );
   const maxReduceAmount = Math.min(50, total * 0.05);
@@ -228,6 +325,37 @@ export default function NewSalePage() {
     maxReduceAmount,
   );
   const payableTotal = Math.max(total - appliedReduceAmount, 0);
+  const perfumeRulesForSelectedPerfume = perfumePricing.rules.filter(
+    (rule) =>
+      rule.isActive &&
+      (!perfumeVariantId || rule.perfumeVariantId === perfumeVariantId),
+  );
+  const selectedPerfumeRule =
+    perfumePricing.rules.find((rule) => rule.id === perfumeRuleId) ?? null;
+  const selectedPerfumeVariant =
+    allVariants.find((variant) => variant.id === perfumeVariantId) ?? null;
+  const selectedBottleVariant = selectedPerfumeRule
+    ? allVariants.find(
+        (variant) => variant.id === selectedPerfumeRule.bottleVariantId,
+      ) ?? null
+    : null;
+  const perfumeSoldMl =
+    perfumeMode === "preset"
+      ? selectedPerfumeRule?.fillMl ?? 0
+      : customPerfumeMl;
+  const perfumePreviewLiquidCost =
+    selectedPerfumeVariant && perfumeSoldMl > 0
+      ? selectedPerfumeVariant.avgCost * perfumeSoldMl
+      : 0;
+  const perfumePreviewSellingPrice =
+    selectedPerfumeRule && perfumeSoldMl > 0
+      ? perfumePreviewLiquidCost * 2 + selectedPerfumeRule.bottleSellingPrice
+      : 0;
+  const perfumePreviewBottleCost = selectedBottleVariant?.avgCost ?? 0;
+  const perfumePreviewProfit =
+    perfumePreviewSellingPrice -
+    perfumePreviewLiquidCost -
+    perfumePreviewBottleCost;
 
   function updateReduceAmount(nextValue: number) {
     const boundedValue = Math.min(Math.max(nextValue, 0), maxReduceAmount);
@@ -285,12 +413,13 @@ export default function NewSalePage() {
 
     setCart((currentCart) => {
       const existingLine = currentCart.find(
-        (line) => line.variantId === selectedVariant.id,
+        (line) =>
+          line.mode === "standard" && line.variantId === selectedVariant.id,
       );
 
       if (existingLine) {
         return currentCart.map((line) =>
-          line.variantId === selectedVariant.id
+          line.mode === "standard" && line.variantId === selectedVariant.id
             ? { ...line, qty: line.qty + qty }
             : line,
         );
@@ -303,6 +432,7 @@ export default function NewSalePage() {
       return [
         ...currentCart,
         {
+          mode: "standard",
           variantId: selectedVariant.id,
           label: `${productName} · ${selectedVariant.color} · ${selectedVariant.size}`,
           sku: selectedVariant.sku,
@@ -317,6 +447,42 @@ export default function NewSalePage() {
     setSearch("");
     setIsSkuDropdownOpen(false);
     setVariantId("");
+    setStatus(null);
+  }
+
+  function addPerfumeLine() {
+    if (!selectedPerfumeVariant || !selectedPerfumeRule || perfumeSoldMl <= 0) {
+      setStatus("Pick perfume, bottle rule, and ml first.");
+      return;
+    }
+
+    if (selectedPerfumeVariant.stockQty < perfumeSoldMl) {
+      setStatus("Not enough perfume liquid stock.");
+      return;
+    }
+
+    if (!selectedBottleVariant || selectedBottleVariant.stockQty < 1) {
+      setStatus("Selected bottle is out of stock.");
+      return;
+    }
+
+    setCart((currentCart) => [
+      ...currentCart,
+      {
+        mode: "perfume",
+        pricingRuleId: selectedPerfumeRule.id,
+        perfumeVariantId: selectedPerfumeVariant.id,
+        bottleVariantId: selectedPerfumeRule.bottleVariantId,
+        label: selectedPerfumeRule.perfumeLabel,
+        sku: selectedPerfumeVariant.sku,
+        soldMl: perfumeSoldMl,
+        bottleLabel: selectedPerfumeRule.bottleLabel,
+        sellingPrice: perfumePreviewSellingPrice,
+      },
+    ]);
+
+    setPerfumeRuleId("");
+    setCustomPerfumeMl(5);
     setStatus(null);
   }
 
@@ -347,9 +513,17 @@ export default function NewSalePage() {
         discountAmount: appliedReduceAmount,
         note: note.trim() || undefined,
         items: cart.map((line) => ({
-          variantId: line.variantId,
-          qty: line.qty,
-          sellingPrice: line.sellingPrice,
+          ...(line.mode === "standard"
+            ? {
+                variantId: line.variantId,
+                qty: line.qty,
+                sellingPrice: line.sellingPrice,
+              }
+            : {
+                mode: "perfume" as const,
+                pricingRuleId: line.pricingRuleId,
+                soldMl: line.soldMl,
+              }),
         })),
       }),
     });
@@ -518,13 +692,152 @@ export default function NewSalePage() {
             </label>
           </div>
 
-          <button
-            className="btn-primary w-full sm:w-auto"
-            onClick={addLine}
-            type="button"
-          >
-            Add line
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="btn-primary w-full sm:w-auto"
+              onClick={addLine}
+              type="button"
+            >
+              Add standard line
+            </button>
+          </div>
+
+          <div className="grid gap-4 rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-(--text-secondary)">
+                Perfume sale
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold tracking-tight">
+                Sell perfume by ml
+              </h3>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm text-(--text-secondary)">
+                Perfume liquid
+                <select
+                  className="field"
+                  value={perfumeVariantId}
+                  onChange={(event) => {
+                    setPerfumeVariantId(event.target.value);
+                    setPerfumeRuleId("");
+                  }}
+                >
+                  <option value="">Select perfume</option>
+                  {perfumePricing.perfumes.map((perfume) => (
+                    <option key={perfume.id} value={perfume.id}>
+                      {perfume.productName} · {perfume.sku} · stock {perfume.stockQty}{" "}
+                      {perfume.unitLabel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-2 text-sm text-(--text-secondary)">
+                Price rule / bottle
+                <select
+                  className="field"
+                  value={perfumeRuleId}
+                  onChange={(event) => setPerfumeRuleId(event.target.value)}
+                >
+                  <option value="">Select bottle rule</option>
+                  {perfumeRulesForSelectedPerfume.map((rule: PerfumeRule) => (
+                    <option key={rule.id} value={rule.id}>
+                      {rule.bottleLabel} · default {rule.fillMl}ml · add-on{" "}
+                      {currency(rule.bottleSellingPrice)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="inline-flex rounded-2xl bg-(--surface-accent-soft) p-1">
+              <button
+                className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                  perfumeMode === "preset"
+                    ? "bg-(--surface-accent) text-white"
+                    : "text-(--text-secondary)"
+                }`}
+                onClick={() => setPerfumeMode("preset")}
+                type="button"
+              >
+                Preset pack
+              </button>
+              <button
+                className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                  perfumeMode === "custom"
+                    ? "bg-(--surface-accent) text-white"
+                    : "text-(--text-secondary)"
+                }`}
+                onClick={() => setPerfumeMode("custom")}
+                type="button"
+              >
+                Custom ml
+              </button>
+            </div>
+
+            {perfumeMode === "custom" ? (
+              <label className="space-y-2 text-sm text-(--text-secondary)">
+                Custom ml
+                <input
+                  className="field"
+                  min={1}
+                  type="number"
+                  value={customPerfumeMl}
+                  onChange={(event) =>
+                    setCustomPerfumeMl(Number(event.target.value) || 1)
+                  }
+                />
+              </label>
+            ) : null}
+
+            <div className="grid gap-2 rounded-[1.4rem] border border-(--stroke-soft) bg-(--surface-panel-strong) p-4 text-sm text-(--text-secondary) md:grid-cols-2">
+              <p>
+                Sold ml:{" "}
+                <span className="font-semibold text-foreground">
+                  {perfumeSoldMl || 0}
+                </span>
+              </p>
+              <p>
+                Liquid cost:{" "}
+                <span className="font-semibold text-foreground">
+                  {currency(perfumePreviewLiquidCost)}
+                </span>
+              </p>
+              <p>
+                Bottle buy cost:{" "}
+                <span className="font-semibold text-foreground">
+                  {currency(perfumePreviewBottleCost)}
+                </span>
+              </p>
+              <p>
+                Bottle add-on:{" "}
+                <span className="font-semibold text-foreground">
+                  {currency(selectedPerfumeRule?.bottleSellingPrice ?? 0)}
+                </span>
+              </p>
+              <p>
+                Selling price:{" "}
+                <span className="font-semibold text-foreground">
+                  {currency(perfumePreviewSellingPrice)}
+                </span>
+              </p>
+              <p>
+                Profit:{" "}
+                <span className="font-semibold text-foreground">
+                  {currency(perfumePreviewProfit)}
+                </span>
+              </p>
+            </div>
+
+            <button
+              className="btn-secondary w-full sm:w-auto"
+              onClick={addPerfumeLine}
+              type="button"
+            >
+              Add perfume line
+            </button>
+          </div>
         </section>
 
         <aside className="space-y-4 rounded-[1.8rem] bg-(--surface-accent) p-6 text-(--text-inverse)">
@@ -602,25 +915,25 @@ export default function NewSalePage() {
 
           <div className="space-y-3">
             {cart.length ? (
-              cart.map((line) => (
+              cart.map((line, index) => (
                 <div
-                  key={line.variantId}
+                  key={`${line.mode}-${index}`}
                   className="rounded-[1.4rem] bg-white/10 p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-white">{line.label}</p>
                       <p className="mt-1 text-xs uppercase tracking-[0.2em] text-white/60">
-                        {line.sku}
+                        {line.mode === "standard"
+                          ? line.sku
+                          : `${line.sku} · ${line.soldMl}ML · ${line.bottleLabel}`}
                       </p>
                     </div>
                     <button
                       className="text-sm text-white/70"
                       onClick={() =>
                         setCart((currentCart) =>
-                          currentCart.filter(
-                            (item) => item.variantId !== line.variantId,
-                          ),
+                          currentCart.filter((_, cartIndex) => cartIndex !== index),
                         )
                       }
                       type="button"
@@ -628,51 +941,58 @@ export default function NewSalePage() {
                       Remove
                     </button>
                   </div>
-                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                    <label className="space-y-2 text-white/70">
-                      Qty
-                      <input
-                        className="field text-foreground"
-                        type="number"
-                        min={1}
-                        value={line.qty}
-                        onChange={(event) =>
-                          setCart((currentCart) =>
-                            currentCart.map((item) =>
-                              item.variantId === line.variantId
-                                ? {
-                                    ...item,
-                                    qty: Number(event.target.value) || 1,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                    <label className="space-y-2 text-white/70">
-                      Selling price
-                      <input
-                        className="field text-foreground"
-                        type="number"
-                        min={0}
-                        value={line.sellingPrice}
-                        onChange={(event) =>
-                          setCart((currentCart) =>
-                            currentCart.map((item) =>
-                              item.variantId === line.variantId
-                                ? {
-                                    ...item,
-                                    sellingPrice:
-                                      Number(event.target.value) || 0,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
+                  {line.mode === "standard" ? (
+                    <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                      <label className="space-y-2 text-white/70">
+                        Qty
+                        <input
+                          className="field text-foreground"
+                          type="number"
+                          min={1}
+                          value={line.qty}
+                          onChange={(event) =>
+                            setCart((currentCart) =>
+                              currentCart.map((item, cartIndex) =>
+                                cartIndex === index && item.mode === "standard"
+                                  ? {
+                                      ...item,
+                                      qty: Number(event.target.value) || 1,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="space-y-2 text-white/70">
+                        Selling price
+                        <input
+                          className="field text-foreground"
+                          type="number"
+                          min={0}
+                          value={line.sellingPrice}
+                          onChange={(event) =>
+                            setCart((currentCart) =>
+                              currentCart.map((item, cartIndex) =>
+                                cartIndex === index && item.mode === "standard"
+                                  ? {
+                                      ...item,
+                                      sellingPrice:
+                                        Number(event.target.value) || 0,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-[1.2rem] bg-white/8 p-3 text-sm text-white/80">
+                      Formula sale. Remove and re-add if you want another ml or
+                      bottle rule.
+                    </div>
+                  )}
                 </div>
               ))
             ) : (

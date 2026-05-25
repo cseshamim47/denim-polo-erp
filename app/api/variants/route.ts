@@ -17,6 +17,9 @@ const createVariantSchema = z.object({
   sizes: z.array(z.string().trim().min(1)).min(1).optional(),
   barcode: z.string().trim().optional(),
   sellingPrice: z.number().nonnegative(),
+  inventoryMode: z.enum(["unit", "volume", "packaging"]).optional(),
+  unitLabel: z.string().trim().min(1).optional(),
+  allowDecimalQty: z.boolean().optional(),
 });
 
 const deleteVariantSchema = z.object({
@@ -175,6 +178,7 @@ export async function GET(request: Request) {
   const search = searchParams.get("search")?.trim().toUpperCase();
   const stock = searchParams.get("stock");
   const deleteStatus = searchParams.get("deleteStatus");
+  const inventoryMode = searchParams.get("inventoryMode")?.trim();
   const pageParam = searchParams.get("page");
   const pageSizeParam = searchParams.get("pageSize");
   const shouldPaginate = Boolean(pageParam || pageSizeParam);
@@ -187,6 +191,14 @@ export async function GET(request: Request) {
 
   if (productId) {
     query.productId = productId;
+  }
+
+  if (
+    inventoryMode === "unit" ||
+    inventoryMode === "volume" ||
+    inventoryMode === "packaging"
+  ) {
+    query.inventoryMode = inventoryMode;
   }
 
   if (search) {
@@ -229,6 +241,9 @@ export async function GET(request: Request) {
         stockQty: variant.stockQty,
         avgCost: decimalToNumber(variant.avgCost),
         sellingPrice: decimalToNumber(variant.sellingPrice),
+        inventoryMode: variant.inventoryMode,
+        unitLabel: variant.unitLabel,
+        allowDecimalQty: variant.allowDecimalQty,
       })),
     });
   }
@@ -284,6 +299,9 @@ export async function GET(request: Request) {
         stockQty: variant.stockQty,
         avgCost: decimalToNumber(variant.avgCost),
         sellingPrice: decimalToNumber(variant.sellingPrice),
+        inventoryMode: variant.inventoryMode,
+        unitLabel: variant.unitLabel,
+        allowDecimalQty: variant.allowDecimalQty,
         lowStockThreshold: variant.lowStockThreshold,
         isActive: variant.isActive,
         deleteRequest: {
@@ -473,6 +491,9 @@ export async function POST(request: Request) {
       size,
     }),
     barcode: parsed.data.barcode ?? null,
+    inventoryMode: parsed.data.inventoryMode ?? "unit",
+    unitLabel: (parsed.data.unitLabel ?? "PCS").trim().toUpperCase(),
+    allowDecimalQty: parsed.data.allowDecimalQty ?? false,
     stockQty: 0,
     avgCost: toDecimal128(0),
     sellingPrice: toDecimal128(parsed.data.sellingPrice),

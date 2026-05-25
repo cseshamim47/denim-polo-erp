@@ -5,6 +5,7 @@ export type SaleStatus = "completed" | "voided";
 export interface SaleLine {
   _id?: Types.ObjectId;
   variantId: Types.ObjectId;
+  saleMode?: "standard" | "perfume";
   productSnapshot: string;
   skuSnapshot: string;
   colorSnapshot: string;
@@ -16,6 +17,13 @@ export interface SaleLine {
   lineSubtotal: unknown;
   lineDiscount: unknown;
   lineTotal: unknown;
+  perfumeFillMl?: number | null;
+  packagingVariantId?: Types.ObjectId | null;
+  packagingSkuSnapshot?: string | null;
+  packagingSizeSnapshot?: string | null;
+  packagingCostSnapshot?: unknown | null;
+  packagingSellingPriceSnapshot?: unknown | null;
+  liquidCostSnapshot?: unknown | null;
   returnedQty: number;
   damagedQty: number;
 }
@@ -41,6 +49,12 @@ export interface Sale {
 const saleLineSchema = new Schema<SaleLine>(
   {
     variantId: { type: Schema.Types.ObjectId, ref: "Variant", required: true },
+    saleMode: {
+      type: String,
+      enum: ["standard", "perfume"],
+      required: true,
+      default: "standard",
+    },
     productSnapshot: { type: String, required: true, trim: true },
     skuSnapshot: { type: String, required: true, trim: true, uppercase: true },
     colorSnapshot: {
@@ -61,6 +75,20 @@ const saleLineSchema = new Schema<SaleLine>(
       default: () => Types.Decimal128.fromString("0"),
     },
     lineTotal: { type: Schema.Types.Decimal128, required: true },
+    perfumeFillMl: { type: Number, default: null },
+    packagingVariantId: {
+      type: Schema.Types.ObjectId,
+      ref: "Variant",
+      default: null,
+    },
+    packagingSkuSnapshot: { type: String, default: null },
+    packagingSizeSnapshot: { type: String, default: null },
+    packagingCostSnapshot: { type: Schema.Types.Decimal128, default: null },
+    packagingSellingPriceSnapshot: {
+      type: Schema.Types.Decimal128,
+      default: null,
+    },
+    liquidCostSnapshot: { type: Schema.Types.Decimal128, default: null },
     returnedQty: { type: Number, required: true, min: 0, default: 0 },
     damagedQty: { type: Number, required: true, min: 0, default: 0 },
   },

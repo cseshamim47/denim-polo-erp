@@ -31,11 +31,19 @@ const saleSchema = z.object({
   note: z.string().trim().optional(),
   items: z
     .array(
-      z.object({
-        variantId: z.string().trim().min(1),
-        qty: z.number().int().positive(),
-        sellingPrice: z.number().nonnegative().optional(),
-      }),
+      z.union([
+        z.object({
+          mode: z.literal("perfume"),
+          pricingRuleId: z.string().trim().min(1),
+          soldMl: z.number().int().positive(),
+        }),
+        z.object({
+          mode: z.literal("standard").optional().default("standard"),
+          variantId: z.string().trim().min(1),
+          qty: z.number().int().positive(),
+          sellingPrice: z.number().nonnegative().optional(),
+        }),
+      ]),
     )
     .min(1),
 });
@@ -114,11 +122,16 @@ export async function GET(request: Request) {
       items: sale.items.map((item) => ({
         id: item._id?.toString() ?? "",
         variantId: item.variantId.toString(),
+        saleMode: item.saleMode ?? "standard",
         productSnapshot: item.productSnapshot,
         skuSnapshot: item.skuSnapshot,
         colorSnapshot: item.colorSnapshot,
         sizeSnapshot: item.sizeSnapshot,
         qty: item.qty,
+        perfumeFillMl: item.perfumeFillMl ?? null,
+        packagingVariantId: item.packagingVariantId?.toString() ?? null,
+        packagingSkuSnapshot: item.packagingSkuSnapshot ?? null,
+        packagingSizeSnapshot: item.packagingSizeSnapshot ?? null,
         returnedQty: item.returnedQty,
         damagedQty: item.damagedQty,
       })),

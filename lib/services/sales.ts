@@ -2,7 +2,9 @@ import { HydratedDocument, Types } from "mongoose";
 
 import { connectToDatabase } from "@/lib/db";
 import { buildSaleLineSnapshot } from "@/lib/domain/stock-calculations";
+import { buildPerfumeSaleFinancials } from "@/lib/domain/perfume-pricing";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
+import PerfumePricingRuleModel from "@/models/PerfumePricingRule";
 import ProductModel from "@/models/Product";
 import SaleModel, { type Sale } from "@/models/Sale";
 import VariantModel from "@/models/Variant";
@@ -11,17 +13,31 @@ function buildSaleNumber() {
   return `SALE-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
+function normalizeSnapshotValue(value: string | null | undefined, fallback: string) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : fallback;
+}
+
 export async function createSale(input: {
   soldBy: string;
   paymentMethod: string;
   saleDate: Date;
   discountAmount?: number;
   note?: string;
-  items: Array<{
-    variantId: string;
-    qty: number;
-    sellingPrice?: number;
-  }>;
+  items: Array<
+    | {
+        mode?: "standard";
+        variantId: string;
+        qty: number;
+        sellingPrice?: number;
+      }
+    | {
+        mode: "perfume";
+        pricingRuleId: string;
+        soldMl: number;
+      }
+  >;
 }): Promise<HydratedDocument<Sale>> {
   await connectToDatabase();
 
@@ -29,6 +45,109 @@ export async function createSale(input: {
   let subtotal = 0;
 
   for (const item of input.items) {
+    if (item.mode === "perfume") {
+      const pricingRule = await PerfumePricingRuleModel.findById(
+        item.pricingRuleId,
+      );
+
+      if (!pricingRule || !pricingRule.isActive) {
+        throw new Error("perfume pricing rule not found");
+      }
+
+      const [perfumeVariant, bottleVariant] = await Promise.all([
+        VariantModel.findById(pricingRule.perfumeVariantId),
+        VariantModel.findById(pricingRule.bottleVariantId),
+      ]);
+
+      if (!perfumeVariant || perfumeVariant.inventoryMode !== "volume") {
+        throw new Error("perfume variant not found");
+      }
+
+      if (!bottleVariant || bottleVariant.inventoryMode !== "packaging") {
+        throw new Error("perfume bottle variant not found");
+      }
+
+      const [perfumeProduct, bottleProduct] = await Promise.all([
+        ProductModel.findById(perfumeVariant.productId),
+        ProductModel.findById(bottleVariant.productId),
+      ]);
+
+      if (!perfumeProduct || !bottleProduct) {
+        throw new Error("product not found");
+      }
+
+      const perfumeVariantUpdated = await VariantModel.findOneAndUpdate(
+        {
+          _id: perfumeVariant._id,
+          stockQty: { $gte: item.soldMl },
+        },
+        { $inc: { stockQty: -item.soldMl } },
+        { returnDocument: "after" },
+      );
+
+      if (!perfumeVariantUpdated) {
+        throw new Error("sold quantity exceeds stock");
+      }
+
+      const bottleVariantUpdated = await VariantModel.findOneAndUpdate(
+        {
+          _id: bottleVariant._id,
+          stockQty: { $gte: 1 },
+        },
+        { $inc: { stockQty: -1 } },
+        { returnDocument: "after" },
+      );
+
+      if (!bottleVariantUpdated) {
+        await VariantModel.updateOne(
+          { _id: perfumeVariant._id },
+          { $inc: { stockQty: item.soldMl } },
+        );
+        throw new Error("sold quantity exceeds stock");
+      }
+
+      const avgCostPerMl = decimalToNumber(perfumeVariant.avgCost);
+      const bottleBuyingCost = decimalToNumber(bottleVariant.avgCost);
+      const bottleSellingPrice = decimalToNumber(
+        pricingRule.bottleSellingPrice,
+      );
+      const financials = buildPerfumeSaleFinancials({
+        avgCostPerMl,
+        soldMl: item.soldMl,
+        bottleBuyingCost,
+        bottleSellingPrice,
+      });
+
+      subtotal += financials.sellingPrice;
+
+      saleItems.push({
+        variantId: perfumeVariant._id,
+        saleMode: "perfume",
+        productSnapshot: perfumeProduct.name,
+        skuSnapshot: perfumeVariant.sku,
+        colorSnapshot: normalizeSnapshotValue(perfumeVariant.color, "N/A"),
+        sizeSnapshot: normalizeSnapshotValue(perfumeVariant.size, "N/A"),
+        qty: 1,
+        sellingPriceSnapshot: toDecimal128(financials.sellingPrice),
+        avgCostSnapshot: toDecimal128(financials.totalCost),
+        profitPerUnitSnapshot: toDecimal128(financials.profit),
+        lineSubtotal: toDecimal128(financials.sellingPrice),
+        lineDiscount: toDecimal128(0),
+        lineTotal: toDecimal128(financials.sellingPrice),
+        perfumeFillMl: item.soldMl,
+        packagingVariantId: bottleVariant._id,
+        packagingSkuSnapshot: bottleVariant.sku,
+        packagingSizeSnapshot: bottleVariant.size,
+        packagingCostSnapshot: toDecimal128(bottleBuyingCost),
+        packagingSellingPriceSnapshot: toDecimal128(bottleSellingPrice),
+        liquidCostSnapshot: toDecimal128(financials.liquidCost),
+        returnedQty: 0,
+        damagedQty: 0,
+      });
+
+      continue;
+    }
+
     const variant = await VariantModel.findById(item.variantId);
 
     if (!variant) {
@@ -73,10 +192,11 @@ export async function createSale(input: {
 
     saleItems.push({
       variantId: variant._id,
+      saleMode: "standard",
       productSnapshot: product.name,
       skuSnapshot: variant.sku,
-      colorSnapshot: variant.color,
-      sizeSnapshot: variant.size,
+      colorSnapshot: normalizeSnapshotValue(variant.color, "N/A"),
+      sizeSnapshot: normalizeSnapshotValue(variant.size, "N/A"),
       qty: item.qty,
       sellingPriceSnapshot: toDecimal128(sellingPrice),
       avgCostSnapshot: toDecimal128(avgCost),
@@ -84,6 +204,13 @@ export async function createSale(input: {
       lineSubtotal: toDecimal128(lineSubtotal),
       lineDiscount: toDecimal128(0),
       lineTotal: toDecimal128(lineSubtotal),
+      perfumeFillMl: null,
+      packagingVariantId: null,
+      packagingSkuSnapshot: null,
+      packagingSizeSnapshot: null,
+      packagingCostSnapshot: null,
+      packagingSellingPriceSnapshot: null,
+      liquidCostSnapshot: null,
       returnedQty: 0,
       damagedQty: 0,
     });

@@ -32,6 +32,9 @@ export interface Variant {
   size: string;
   sku: string;
   barcode?: string | null;
+  inventoryMode: "unit" | "volume" | "packaging";
+  unitLabel: string;
+  allowDecimalQty: boolean;
   stockQty: number;
   avgCost: unknown;
   sellingPrice: unknown;
@@ -106,6 +109,20 @@ const variantSchema = new Schema<Variant>(
       uppercase: true,
     },
     barcode: { type: String, default: null },
+    inventoryMode: {
+      type: String,
+      enum: ["unit", "volume", "packaging"],
+      required: true,
+      default: "unit",
+    },
+    unitLabel: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      default: "PCS",
+    },
+    allowDecimalQty: { type: Boolean, required: true, default: false },
     stockQty: { type: Number, required: true, min: 0, default: 0, index: true },
     avgCost: {
       type: Schema.Types.Decimal128,
@@ -176,6 +193,25 @@ const variantSchema = new Schema<Variant>(
 variantSchema.index({ productId: 1, color: 1, size: 1 }, { unique: true });
 
 function patchVariantSchema(targetSchema: Schema) {
+  if (!targetSchema.path("inventoryMode")) {
+    targetSchema.add({
+      inventoryMode: {
+        type: String,
+        enum: ["unit", "volume", "packaging"],
+        required: true,
+        default: "unit",
+      },
+      unitLabel: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+        default: "PCS",
+      },
+      allowDecimalQty: { type: Boolean, required: true, default: false },
+    });
+  }
+
   if (!targetSchema.path("deleteRequestStatus")) {
     targetSchema.add({
       deleteRequestStatus: {
