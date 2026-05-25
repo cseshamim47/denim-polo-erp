@@ -9,6 +9,7 @@ export function ApprovalSummary({
 }) {
   const cards = [
     { label: "Total pending", value: data?.summary.total ?? 0 },
+    { label: "Products", value: data?.summary.products ?? 0 },
     { label: "Purchases", value: data?.summary.purchases ?? 0 },
     { label: "Expenses", value: data?.summary.expenses ?? 0 },
     { label: "Investments", value: data?.summary.investments ?? 0 },
@@ -17,7 +18,7 @@ export function ApprovalSummary({
 
   return (
     <section className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-6">
         {cards.map((card) => (
           <div
             key={card.label}

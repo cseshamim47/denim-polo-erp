@@ -12,6 +12,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/services/investment-history");
   vi.doUnmock("@/lib/services/investments");
   vi.doUnmock("@/lib/services/approval-queue");
+  vi.doUnmock("@/lib/services/products");
 });
 
 function mockPartnerSession() {
@@ -234,6 +235,7 @@ describe("approval route contracts", () => {
     const listApprovalQueue = vi.fn().mockResolvedValue({
       summary: {
         total: 0,
+        products: 0,
         purchases: 0,
         expenses: 0,
         investments: 0,
@@ -265,6 +267,50 @@ describe("approval route contracts", () => {
       owner: "507f1f77bcf86cd799439012",
       search: "fuel",
       sort: "oldest",
+    });
+  });
+
+  it("supports bulk product approval payloads", async () => {
+    const reviewApprovalQueueItems = vi.fn().mockResolvedValue([
+      {
+        kind: "products",
+        id: "product-1",
+        status: "approved",
+        approval: {
+          partnerId: "507f1f77bcf86cd799439011",
+          partnerName: "Partner One",
+          decision: "approved",
+          comment: null,
+          decidedAt: "2026-05-25T12:00:00.000Z",
+        },
+      },
+    ]);
+
+    mockPartnerSession();
+    vi.doMock("@/lib/services/approval-queue", () => ({
+      listApprovalQueue: vi.fn(),
+      reviewApprovalQueueItems,
+    }));
+
+    const { PATCH } = await import("../../app/api/approvals/route");
+    const response = await PATCH(
+      new Request("http://localhost:3000/api/approvals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ kind: "products", id: "product-1" }],
+          decision: "approved",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(reviewApprovalQueueItems).toHaveBeenCalledWith({
+      items: [{ kind: "products", id: "product-1" }],
+      partnerId: "507f1f77bcf86cd799439011",
+      partnerName: "Partner One",
+      decision: "approved",
+      comment: undefined,
     });
   });
 });

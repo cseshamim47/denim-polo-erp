@@ -6,6 +6,10 @@ import { reviewAssets } from "@/lib/services/assets";
 import { reviewExpenses } from "@/lib/services/expenses";
 import { reviewInvestments } from "@/lib/services/investments";
 import {
+  listProductApprovalQueueItems,
+  reviewProducts,
+} from "@/lib/services/products";
+import {
   listPurchases,
   reviewPurchases,
   type PurchaseHistoryRecord,
@@ -16,6 +20,7 @@ import {
 } from "@/lib/services/approval-review";
 
 export type ApprovalQueueKind =
+  | "products"
   | "purchases"
   | "expenses"
   | "investments"
@@ -97,37 +102,42 @@ export async function listApprovalQueue(input: {
   const search = input.search?.trim() ?? "";
   const sort: ApprovalQueueSort = input.sort === "oldest" ? "oldest" : "newest";
 
-  const [allPartners, purchases, expenses, investments, assets] = await Promise.all([
-    UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
-    listPurchases({
-      actorId: input.actorId,
-      page: 1,
-      pageSize: 100,
-      needsReview: view === "mine",
-      status: view === "partners" ? "pending" : null,
-    }),
-    listExpenseHistory({
-      actorId: input.actorId,
-      page: 1,
-      pageSize: 100,
-      needsReview: view === "mine",
-      status: view === "partners" ? "pending" : null,
-    }),
-    listInvestmentHistory({
-      actorId: input.actorId,
-      page: 1,
-      pageSize: 100,
-      needsReview: view === "mine",
-      status: view === "partners" ? "pending" : null,
-    }),
-    listAssetHistory({
-      actorId: input.actorId,
-      page: 1,
-      pageSize: 100,
-      needsReview: view === "mine",
-      status: view === "partners" ? "pending" : null,
-    }),
-  ]);
+  const [allPartners, products, purchases, expenses, investments, assets] =
+    await Promise.all([
+      UserModel.find({ role: "partner", isActive: true }).sort({ name: 1 }).lean(),
+      listProductApprovalQueueItems({
+        actorId: input.actorId,
+        view,
+      }),
+      listPurchases({
+        actorId: input.actorId,
+        page: 1,
+        pageSize: 100,
+        needsReview: view === "mine",
+        status: view === "partners" ? "pending" : null,
+      }),
+      listExpenseHistory({
+        actorId: input.actorId,
+        page: 1,
+        pageSize: 100,
+        needsReview: view === "mine",
+        status: view === "partners" ? "pending" : null,
+      }),
+      listInvestmentHistory({
+        actorId: input.actorId,
+        page: 1,
+        pageSize: 100,
+        needsReview: view === "mine",
+        status: view === "partners" ? "pending" : null,
+      }),
+      listAssetHistory({
+        actorId: input.actorId,
+        page: 1,
+        pageSize: 100,
+        needsReview: view === "mine",
+        status: view === "partners" ? "pending" : null,
+      }),
+    ]);
 
   const partners = new Map(
     allPartners.map((partner) => [
@@ -200,6 +210,7 @@ export async function listApprovalQueue(input: {
   }));
 
   const allItems = [
+    ...products,
     ...purchaseItems,
     ...expenseItems,
     ...investmentItems,
@@ -270,6 +281,7 @@ export async function listApprovalQueue(input: {
     view,
     summary: {
       total: actorFilteredItems.length,
+      products: actorFilteredItems.filter((item) => item.kind === "products").length,
       purchases: actorFilteredItems.filter((item) => item.kind === "purchases").length,
       expenses: actorFilteredItems.filter((item) => item.kind === "expenses").length,
       investments: actorFilteredItems.filter((item) => item.kind === "investments").length,
@@ -290,6 +302,9 @@ export async function reviewApprovalQueueItems(input: {
   decision: ApprovalDecision;
   comment?: string;
 }) {
+  const productIds = input.items
+    .filter((item) => item.kind === "products")
+    .map((item) => item.id);
   const purchaseIds = input.items
     .filter((item) => item.kind === "purchases")
     .map((item) => item.id);
@@ -304,6 +319,15 @@ export async function reviewApprovalQueueItems(input: {
     .map((item) => item.id);
 
   const results = await Promise.all([
+    productIds.length > 0
+      ? reviewProducts({
+          productIds,
+          partnerId: input.partnerId,
+          partnerName: input.partnerName,
+          decision: input.decision,
+          comment: input.comment,
+        })
+      : Promise.resolve([]),
     purchaseIds.length > 0
       ? reviewPurchases({
           purchaseIds,
@@ -342,10 +366,11 @@ export async function reviewApprovalQueueItems(input: {
       : Promise.resolve([]),
   ]);
 
-  const [purchaseReviews, expenseReviews, investmentReviews, assetReviews] =
+  const [productReviews, purchaseReviews, expenseReviews, investmentReviews, assetReviews] =
     results;
 
   return [
+    ...productReviews.map((review) => ({ ...review, kind: "products" as const })),
     ...purchaseReviews.map((review) => ({ ...review, kind: "purchases" as const })),
     ...expenseReviews.map((review) => ({ ...review, kind: "expenses" as const })),
     ...investmentReviews.map((review) => ({

@@ -131,6 +131,11 @@ export default function ApprovalsPage() {
         ...current,
         summary: {
           total: Math.max(0, current.summary.total - reviews.length),
+          products: Math.max(
+            0,
+            current.summary.products -
+              reviews.filter((review) => review.kind === "products").length,
+          ),
           purchases: Math.max(
             0,
             current.summary.purchases -

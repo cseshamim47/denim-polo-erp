@@ -1,4 +1,5 @@
 export type ApprovalQueueKind =
+  | "products"
   | "purchases"
   | "expenses"
   | "investments"
@@ -28,6 +29,7 @@ export type ApprovalsResponse = {
   view: "mine" | "partners";
   summary: {
     total: number;
+    products: number;
     purchases: number;
     expenses: number;
     investments: number;
@@ -57,6 +59,7 @@ export type ApprovalFiltersState = {
 
 export const approvalKindOptions = [
   { value: "", label: "All modules" },
+  { value: "products", label: "Products" },
   { value: "purchases", label: "Purchases" },
   { value: "expenses", label: "Expenses" },
   { value: "investments", label: "Investments" },

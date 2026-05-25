@@ -11,7 +11,13 @@ const reviewQueueSchema = z.object({
   items: z
     .array(
       z.object({
-        kind: z.enum(["purchases", "expenses", "investments", "assets"]),
+        kind: z.enum([
+          "products",
+          "purchases",
+          "expenses",
+          "investments",
+          "assets",
+        ]),
         id: z.string().trim().min(1),
       }),
     )
