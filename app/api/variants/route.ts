@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { generateVariantSku } from "@/lib/domain/sku";
+import { normalizeVariantDefaults } from "@/lib/domain/variant-defaults";
 import { getRequiredSession } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
@@ -198,7 +199,18 @@ export async function GET(request: Request) {
     inventoryMode === "volume" ||
     inventoryMode === "packaging"
   ) {
-    query.inventoryMode = inventoryMode;
+    query.$and = [
+      ...(Array.isArray(query.$and) ? query.$and : []),
+      inventoryMode === "unit"
+        ? {
+            $or: [
+              { inventoryMode: "unit" },
+              { inventoryMode: { $exists: false } },
+              { inventoryMode: null },
+            ],
+          }
+        : { inventoryMode },
+    ];
   }
 
   if (search) {
@@ -232,19 +244,23 @@ export async function GET(request: Request) {
       .lean();
 
     return NextResponse.json({
-      variants: variants.map((variant) => ({
-        id: variant._id.toString(),
-        productId: variant.productId.toString(),
-        sku: variant.sku,
+      variants: variants.map((rawVariant) => {
+        const variant = normalizeVariantDefaults(rawVariant);
+
+        return {
+          id: variant._id.toString(),
+          productId: variant.productId.toString(),
+          sku: variant.sku,
         color: variant.color,
         size: variant.size,
         stockQty: variant.stockQty,
         avgCost: decimalToNumber(variant.avgCost),
         sellingPrice: decimalToNumber(variant.sellingPrice),
-        inventoryMode: variant.inventoryMode,
-        unitLabel: variant.unitLabel,
-        allowDecimalQty: variant.allowDecimalQty,
-      })),
+          inventoryMode: variant.inventoryMode,
+          unitLabel: variant.unitLabel,
+          allowDecimalQty: variant.allowDecimalQty,
+        };
+      }),
     });
   }
 
@@ -268,7 +284,8 @@ export async function GET(request: Request) {
       : "all";
 
   const mappedVariants = variants
-    .map((variant) => {
+    .map((rawVariant) => {
+      const variant = normalizeVariantDefaults(rawVariant);
       const normalizedStatus = normalizeDeleteRequestStatus({
         status: variant.deleteRequestStatus,
         requestedById: variant.deleteRequestedBy?.toString(),

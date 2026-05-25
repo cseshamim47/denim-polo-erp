@@ -123,6 +123,12 @@ function currency(value: number) {
   }).format(value);
 }
 
+function formatInventoryMode(
+  inventoryMode: Variant["inventoryMode"] | null | undefined,
+) {
+  return (inventoryMode ?? "unit").toUpperCase();
+}
+
 async function readJsonResponse<T>(response: Response) {
   const body = await response.text();
   if (!body) {
@@ -2155,7 +2161,8 @@ export default function ProductsPage() {
                           <p className="col-span-2 text-(--text-secondary)">
                             Mode:{" "}
                             <span className="font-medium uppercase text-foreground">
-                              {variant.inventoryMode} · {variant.unitLabel}
+                              {formatInventoryMode(variant.inventoryMode)} ·{" "}
+                              {variant.unitLabel || "PCS"}
                             </span>
                           </p>
                         </div>
@@ -2337,8 +2344,8 @@ export default function ProductsPage() {
                               {variant.size}
                             </TableCell>
                             <TableCell className="text-(--text-secondary)">
-                              {variant.inventoryMode.toUpperCase()} ·{" "}
-                              {variant.unitLabel}
+                              {formatInventoryMode(variant.inventoryMode)} ·{" "}
+                              {variant.unitLabel || "PCS"}
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge
