@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 
 import { MobileDashboardNav } from "./mobile-dashboard-nav";
+import { DashboardNavigationProvider, useDashboardNavigation } from "./dashboard-navigation-context";
 import { SessionPanel } from "./session-panel";
 import { SidebarNav } from "./sidebar-nav";
+import { Spinner } from "@/components/ui/spinner";
 
 export type DashboardNavItem = {
   href: string;
@@ -27,20 +29,38 @@ export function DashboardShell({
   navItems,
 }: DashboardShellProps) {
   return (
-    <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <MobileDashboardNav currentUser={currentUser} navItems={navItems} />
+    <DashboardNavigationProvider>
+      <div className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl space-y-4">
+          <MobileDashboardNav currentUser={currentUser} navItems={navItems} />
 
-        <div className="grid min-h-[calc(100vh-2rem)] gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="panel hidden rounded-4xl p-5 lg:block lg:p-6">
-            <SidebarContent currentUser={currentUser} navItems={navItems} />
-          </aside>
-          <main className="panel rounded-4xl p-4 sm:p-6 lg:p-8">
-            {children}
-          </main>
+          <div className="grid min-h-[calc(100vh-2rem)] gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+            <aside className="panel hidden rounded-4xl p-5 lg:block lg:p-6">
+              <SidebarContent currentUser={currentUser} navItems={navItems} />
+            </aside>
+            <DashboardMain>{children}</DashboardMain>
+          </div>
         </div>
       </div>
-    </div>
+    </DashboardNavigationProvider>
+  );
+}
+
+function DashboardMain({ children }: { children: ReactNode }) {
+  const { isNavigating, pendingHref } = useDashboardNavigation();
+
+  return (
+    <main className="panel relative rounded-4xl p-4 sm:p-6 lg:p-8">
+      {isNavigating ? (
+        <div className="pointer-events-none absolute inset-x-4 top-4 z-20 rounded-3xl border border-(--stroke-soft) bg-white/88 px-4 py-3 shadow-sm backdrop-blur sm:inset-x-6 lg:inset-x-8">
+          <Spinner
+            className="justify-start"
+            label={`Opening ${pendingHref ?? "page"}...`}
+          />
+        </div>
+      ) : null}
+      {children}
+    </main>
   );
 }
 
