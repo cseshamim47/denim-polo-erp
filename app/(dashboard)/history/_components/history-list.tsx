@@ -4,7 +4,10 @@ import { useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { type HistoryResponse } from "../history-types";
+import {
+  type HistoryFiltersState,
+  type HistoryResponse,
+} from "../history-types";
 
 function SnapshotBlock({
   label,
@@ -32,9 +35,13 @@ function SnapshotBlock({
 export function HistoryList({
   data,
   isLoading,
+  filters,
+  onChangeFilters,
 }: {
   data: HistoryResponse | null;
   isLoading: boolean;
+  filters: HistoryFiltersState;
+  onChangeFilters: (next: HistoryFiltersState) => void;
 }) {
   const [openIds, setOpenIds] = useState<string[]>([]);
   const items = data?.items ?? [];
@@ -101,6 +108,40 @@ export function HistoryList({
           </Card>
         );
       })}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.4rem] bg-white/80 px-4 py-4 ring-1 ring-(--stroke-soft)">
+        <button
+          className="btn-secondary"
+          disabled={(data?.pagination.page ?? 1) <= 1}
+          onClick={() =>
+            onChangeFilters({ ...filters, page: Math.max(filters.page - 1, 1) })
+          }
+          type="button"
+        >
+          Previous
+        </button>
+        <p className="text-sm text-(--text-secondary)">
+          Page {data?.pagination.page ?? 1} / {data?.pagination.totalPages ?? 1}
+        </p>
+        <button
+          className="btn-secondary"
+          disabled={
+            (data?.pagination.page ?? 1) >= (data?.pagination.totalPages ?? 1)
+          }
+          onClick={() =>
+            onChangeFilters({
+              ...filters,
+              page: Math.min(
+                filters.page + 1,
+                data?.pagination.totalPages ?? filters.page + 1,
+              ),
+            })
+          }
+          type="button"
+        >
+          Next
+        </button>
+      </div>
     </section>
   );
 }

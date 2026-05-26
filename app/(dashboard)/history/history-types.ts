@@ -33,6 +33,7 @@ export type HistoryResponse = {
 };
 
 export type HistoryFiltersState = {
+  page: number;
   search: string;
   module: string;
   action: string;

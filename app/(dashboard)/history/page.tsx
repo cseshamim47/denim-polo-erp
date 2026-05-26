@@ -13,6 +13,7 @@ import {
 } from "./history-types";
 
 const initialFilters: HistoryFiltersState = {
+  page: 1,
   search: "",
   module: "",
   action: "",
@@ -23,6 +24,8 @@ const initialFilters: HistoryFiltersState = {
 
 function buildHistoryQuery(filters: HistoryFiltersState) {
   const params = new URLSearchParams();
+  params.set("page", String(filters.page));
+  params.set("pageSize", "15");
 
   if (filters.search.trim()) params.set("search", filters.search.trim());
   if (filters.module) params.set("module", filters.module);
@@ -93,7 +96,15 @@ export default function HistoryPage() {
           setFilters(next);
         }}
       />
-      <HistoryList data={data} isLoading={showInitialLoading} />
+      <HistoryList
+        data={data}
+        isLoading={showInitialLoading}
+        filters={filters}
+        onChangeFilters={(next) => {
+          setIsLoading(true);
+          setFilters(next);
+        }}
+      />
     </div>
   );
 }

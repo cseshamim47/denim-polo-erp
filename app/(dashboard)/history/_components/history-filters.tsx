@@ -29,6 +29,7 @@ export function HistoryFilters({
           className="btn-secondary"
           onClick={() =>
             onChange({
+              page: 1,
               search: "",
               module: "",
               action: "",
@@ -48,14 +49,14 @@ export function HistoryFilters({
           placeholder="Search summary, entity, actor"
           value={filters.search}
           onChange={(event) =>
-            onChange({ ...filters, search: event.target.value })
+            onChange({ ...filters, page: 1, search: event.target.value })
           }
         />
         <select
           className="field rounded-2xl px-4 py-3 text-foreground"
           value={filters.module}
           onChange={(event) =>
-            onChange({ ...filters, module: event.target.value })
+            onChange({ ...filters, page: 1, module: event.target.value })
           }
         >
           {moduleOptions.map((option) => (
@@ -69,14 +70,14 @@ export function HistoryFilters({
           placeholder="Action (create, approve, reject)"
           value={filters.action}
           onChange={(event) =>
-            onChange({ ...filters, action: event.target.value })
+            onChange({ ...filters, page: 1, action: event.target.value })
           }
         />
         <select
           className="field rounded-2xl px-4 py-3 text-foreground"
           value={filters.actor}
           onChange={(event) =>
-            onChange({ ...filters, actor: event.target.value })
+            onChange({ ...filters, page: 1, actor: event.target.value })
           }
         >
           <option value="">All actors</option>
@@ -90,13 +91,17 @@ export function HistoryFilters({
           className="field h-auto rounded-2xl px-4 py-3"
           type="date"
           value={filters.from}
-          onChange={(event) => onChange({ ...filters, from: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...filters, page: 1, from: event.target.value })
+          }
         />
         <Input
           className="field h-auto rounded-2xl px-4 py-3"
           type="date"
           value={filters.to}
-          onChange={(event) => onChange({ ...filters, to: event.target.value })}
+          onChange={(event) =>
+            onChange({ ...filters, page: 1, to: event.target.value })
+          }
         />
       </div>
     </section>
