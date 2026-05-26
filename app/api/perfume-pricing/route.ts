@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
+import { pickChangedFields } from "@/lib/domain/history";
+import { recordHistoryEvent } from "@/lib/services/history";
 import {
   createPerfumePricingRule,
   listPerfumePricingRules,
@@ -65,6 +67,26 @@ export async function POST(request: Request) {
   try {
     const rule = await createPerfumePricingRule(parsed.data);
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "perfume_pricing",
+      entityType: "perfume_pricing_rule",
+      entityId: rule.id,
+      entityLabel: parsed.data.perfumeVariantId,
+      action: "create",
+      summary: "Perfume pricing rule created",
+      before: null,
+      after: {
+        perfumeVariantId: parsed.data.perfumeVariantId,
+        bottleVariantId: parsed.data.bottleVariantId,
+        fillMl: parsed.data.fillMl,
+        bottleSellingPrice: parsed.data.bottleSellingPrice,
+        isActive: true,
+      },
+    });
+
     return NextResponse.json(rule, { status: 201 });
   } catch (error) {
     return NextResponse.json(
@@ -91,7 +113,25 @@ export async function PATCH(request: Request) {
   }
 
   try {
+    const beforeSnapshot = {
+      fillMl: parsed.data.fillMl,
+      bottleSellingPrice: parsed.data.bottleSellingPrice,
+      isActive: parsed.data.isActive,
+    };
     const rule = await updatePerfumePricingRule(parsed.data);
+
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "perfume_pricing",
+      entityType: "perfume_pricing_rule",
+      entityId: rule.id,
+      entityLabel: parsed.data.ruleId,
+      action: "update",
+      summary: "Perfume pricing rule updated",
+      ...pickChangedFields(null, beforeSnapshot),
+    });
 
     return NextResponse.json(rule);
   } catch (error) {

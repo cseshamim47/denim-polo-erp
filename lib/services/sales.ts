@@ -3,6 +3,7 @@ import { HydratedDocument, Types } from "mongoose";
 import { connectToDatabase } from "@/lib/db";
 import { buildSaleLineSnapshot } from "@/lib/domain/stock-calculations";
 import { buildPerfumeSaleFinancials } from "@/lib/domain/perfume-pricing";
+import { recordHistoryEvent } from "@/lib/services/history";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import PerfumePricingRuleModel from "@/models/PerfumePricingRule";
 import ProductModel from "@/models/Product";
@@ -21,6 +22,8 @@ function normalizeSnapshotValue(value: string | null | undefined, fallback: stri
 
 export async function createSale(input: {
   soldBy: string;
+  soldByName: string;
+  soldByRole: string;
   paymentMethod: string;
   saleDate: Date;
   discountAmount?: number;
@@ -227,7 +230,7 @@ export async function createSale(input: {
 
   const grandTotal = subtotal - discountAmount;
 
-  return SaleModel.create({
+  const sale = await SaleModel.create({
     saleNumber: buildSaleNumber(),
     items: saleItems,
     subtotal: toDecimal128(subtotal),
@@ -239,4 +242,26 @@ export async function createSale(input: {
     saleDate: input.saleDate,
     status: "completed",
   });
+
+  await recordHistoryEvent({
+    actorId: input.soldBy,
+    actorName: input.soldByName,
+    actorRole: input.soldByRole,
+    module: "sales",
+    entityType: "sale",
+    entityId: sale._id.toString(),
+    entityLabel: sale.saleNumber,
+    action: "create",
+    summary: `Sale created: ${sale.saleNumber}`,
+    before: null,
+    after: {
+      paymentMethod: input.paymentMethod,
+      itemCount: sale.items.length,
+      grandTotal: grandTotal,
+      saleDate: input.saleDate.toISOString(),
+      note: input.note?.trim() || null,
+    },
+  });
+
+  return sale;
 }

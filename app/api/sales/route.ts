@@ -159,6 +159,8 @@ export async function POST(request: Request) {
     const sale = await createSale({
       ...parsed.data,
       soldBy: session.user.id,
+      soldByName: session.user.name ?? session.user.email ?? "Unknown user",
+      soldByRole: session.user.role ?? "unknown",
     });
 
     return NextResponse.json({ saleId: sale._id.toString() }, { status: 201 });

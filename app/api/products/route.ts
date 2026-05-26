@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { getRequiredSession } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
+import { ensureProductActiveUniqueIndex } from "@/lib/services/product-indexes";
+import { recordHistoryEvent } from "@/lib/services/history";
 import ProductModel from "@/models/Product";
 import UserModel from "@/models/User";
 import VariantModel from "@/models/Variant";
@@ -286,24 +288,66 @@ export async function POST(request: Request) {
   }
 
   await connectToDatabase();
+  await ensureProductActiveUniqueIndex();
 
-  const product = await ProductModel.create({
-    name: parsed.data.name,
-    category: parsed.data.category.trim().toUpperCase(),
-    description: parsed.data.description ?? null,
-    isActive: true,
-  });
+  try {
+    const product = await ProductModel.create({
+      name: parsed.data.name,
+      category: parsed.data.category.trim().toUpperCase(),
+      description: parsed.data.description ?? null,
+      isActive: true,
+    });
 
-  return NextResponse.json(
-    {
-      product: {
-        id: product._id.toString(),
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "products",
+      entityType: "product",
+      entityId: product._id.toString(),
+      entityLabel: `${product.name} (${product.category})`,
+      action: "create",
+      summary: `Product created: ${product.name} (${product.category})`,
+      before: null,
+      after: {
         name: product.name,
         category: product.category,
+        description: product.description ?? null,
+        isActive: true,
       },
-    },
-    { status: 201 },
-  );
+    });
+
+    return NextResponse.json(
+      {
+        product: {
+          id: product._id.toString(),
+          name: product.name,
+          category: product.category,
+        },
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (/duplicate key/i.test(message)) {
+      return NextResponse.json(
+        {
+          error:
+            "An active product with the same name and category already exists.",
+        },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Unable to create product",
+      },
+      { status: 400 },
+    );
+  }
 }
 
 export async function DELETE(request: Request) {
@@ -395,6 +439,27 @@ export async function DELETE(request: Request) {
   product.deleteRequiredApprovalCountSnapshot = requiredApproverIds.length;
   product.deleteFinalizedAt = null;
   await product.save();
+
+  await recordHistoryEvent({
+    actorId: session.user.id,
+    actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+    actorRole: "partner",
+    module: "products",
+    entityType: "product",
+    entityId: product._id.toString(),
+    entityLabel: `${product.name} (${product.category})`,
+    action: "request_delete",
+    summary: `Product delete requested: ${product.name} (${product.category})`,
+    before: {
+      deleteRequestStatus: "none",
+      isActive: true,
+    },
+    after: {
+      deleteRequestStatus: "pending",
+      deleteRequestedBy: session.user.id,
+      requiredApprovalCount: requiredApproverIds.length,
+    },
+  });
 
   return NextResponse.json({
     status: "pending_review",
@@ -495,6 +560,20 @@ export async function PATCH(request: Request) {
     product.deleteFinalizedAt = new Date();
     await product.save();
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "products",
+      entityType: "product",
+      entityId: product._id.toString(),
+      entityLabel: `${product.name} (${product.category})`,
+      action: "reject_delete",
+      summary: `Product delete rejected: ${product.name} (${product.category})`,
+      before: { deleteRequestStatus: "pending", isActive: true },
+      after: { deleteRequestStatus: "rejected", isActive: true },
+    });
+
     return NextResponse.json({ status: "rejected" });
   }
 
@@ -535,9 +614,38 @@ export async function PATCH(request: Request) {
       { $set: { isActive: false } },
     );
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "products",
+      entityType: "product",
+      entityId: product._id.toString(),
+      entityLabel: `${product.name} (${product.category})`,
+      action: "approve_delete",
+      summary: `Product delete approved: ${product.name} (${product.category})`,
+      before: { deleteRequestStatus: "pending", isActive: true },
+      after: { deleteRequestStatus: "approved", isActive: false },
+    });
+
     return NextResponse.json({ status: "approved" });
   }
 
   await product.save();
+
+  await recordHistoryEvent({
+    actorId: session.user.id,
+    actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+    actorRole: "partner",
+    module: "products",
+    entityType: "product",
+    entityId: product._id.toString(),
+    entityLabel: `${product.name} (${product.category})`,
+    action: parsed.data.decision === "approved" ? "approve_delete" : "reject_delete",
+    summary: `Product delete reviewed: ${product.name} (${product.category})`,
+    before: { deleteRequestStatus: "pending", isActive: true },
+    after: { deleteRequestStatus: "pending", isActive: true },
+    meta: { reviewDecision: parsed.data.decision },
+  });
   return NextResponse.json({ status: "pending" });
 }

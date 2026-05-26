@@ -7,6 +7,7 @@ import {
   type ApprovalReviewUpdate,
   uniqReviewIds,
 } from "@/lib/services/approval-review";
+import { recordHistoryEvent } from "@/lib/services/history";
 import ProductModel from "@/models/Product";
 import UserModel from "@/models/User";
 import VariantModel from "@/models/Variant";
@@ -250,6 +251,19 @@ export async function reviewProducts(input: {
       product.deleteRequestStatus = "rejected";
       product.deleteFinalizedAt = now;
       await product.save();
+      await recordHistoryEvent({
+        actorId: input.partnerId,
+        actorName: input.partnerName,
+        actorRole: "partner",
+        module: "products",
+        entityType: "product",
+        entityId: product._id.toString(),
+        entityLabel: `${product.name} (${product.category})`,
+        action: "reject_delete",
+        summary: `Product delete rejected: ${product.name} (${product.category})`,
+        before: { deleteRequestStatus: "pending", isActive: true },
+        after: { deleteRequestStatus: "rejected", isActive: true },
+      });
       results.push(
         buildApprovalReviewUpdate({
           id: product._id.toString(),
@@ -297,6 +311,20 @@ export async function reviewProducts(input: {
         { $set: { isActive: false } },
       );
 
+      await recordHistoryEvent({
+        actorId: input.partnerId,
+        actorName: input.partnerName,
+        actorRole: "partner",
+        module: "products",
+        entityType: "product",
+        entityId: product._id.toString(),
+        entityLabel: `${product.name} (${product.category})`,
+        action: "approve_delete",
+        summary: `Product delete approved: ${product.name} (${product.category})`,
+        before: { deleteRequestStatus: "pending", isActive: true },
+        after: { deleteRequestStatus: "approved", isActive: false },
+      });
+
       results.push(
         buildApprovalReviewUpdate({
           id: product._id.toString(),
@@ -312,6 +340,22 @@ export async function reviewProducts(input: {
     }
 
     await product.save();
+    await recordHistoryEvent({
+      actorId: input.partnerId,
+      actorName: input.partnerName,
+      actorRole: "partner",
+      module: "products",
+      entityType: "product",
+      entityId: product._id.toString(),
+      entityLabel: `${product.name} (${product.category})`,
+      action: input.decision === "approved" ? "approve_delete" : "reject_delete",
+      summary: `Product delete ${input.decision}: ${product.name} (${product.category})`,
+      before: { deleteRequestStatus: "pending", isActive: true },
+      after: { deleteRequestStatus: product.deleteRequestStatus, isActive: true },
+      meta: {
+        reviewStatus: "pending",
+      },
+    });
     results.push(
       buildApprovalReviewUpdate({
         id: product._id.toString(),

@@ -138,6 +138,7 @@ export async function POST(request: Request) {
     const purchase = await createPurchase({
       ...parsed.data,
       createdBy: session.user.id,
+      createdByName: session.user.name ?? session.user.email ?? "Unknown partner",
     });
 
     return NextResponse.json(

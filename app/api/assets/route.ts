@@ -85,6 +85,8 @@ export async function POST(request: Request) {
       note: parsed.data.note,
       assetDate: parsed.data.assetDate,
       submittedBy: session.user.id,
+      submittedByName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
     });
 
     return NextResponse.json({ assetId: asset._id.toString() }, { status: 201 });

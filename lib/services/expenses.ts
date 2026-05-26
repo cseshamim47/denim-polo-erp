@@ -6,6 +6,7 @@ import {
   uniqReviewIds,
   type ApprovalDecision,
 } from "@/lib/services/approval-review";
+import { recordHistoryEvent } from "@/lib/services/history";
 import {
   buildExpenseApprovalSnapshot,
   evaluateExpenseDecision,
@@ -20,6 +21,7 @@ export async function createExpense(input: {
   note?: string;
   expenseDate: Date;
   submittedBy: string;
+  submittedByName: string;
 }) {
   await connectToDatabase();
 
@@ -36,7 +38,7 @@ export async function createExpense(input: {
     throw new Error("expense approval requires at least one active approver");
   }
 
-  return ExpenseModel.create({
+  const expense = await ExpenseModel.create({
     title: input.title,
     amount: toDecimal128(input.amount),
     note: input.note ?? null,
@@ -50,6 +52,28 @@ export async function createExpense(input: {
     requiredApprovalCountSnapshot: snapshot.requiredApprovalCount,
     expenseDate: input.expenseDate,
   });
+
+  await recordHistoryEvent({
+    actorId: input.submittedBy,
+    actorName: input.submittedByName,
+    actorRole: "partner",
+    module: "expenses",
+    entityType: "expense",
+    entityId: expense._id.toString(),
+    entityLabel: input.title,
+    action: "create",
+    summary: `Expense created: ${input.title}`,
+    before: null,
+    after: {
+      title: input.title,
+      amount: input.amount,
+      expenseDate: input.expenseDate.toISOString(),
+      status: "pending",
+      note: input.note ?? null,
+    },
+  });
+
+  return expense;
 }
 
 export async function reviewExpense(input: {
@@ -136,6 +160,23 @@ export async function reviewExpenses(input: {
         decidedAt: actorApproval.decidedAt,
       }),
     );
+
+    await recordHistoryEvent({
+      actorId: input.partnerId,
+      actorName: input.partnerName,
+      actorRole: "partner",
+      module: "expenses",
+      entityType: "expense",
+      entityId: expense._id.toString(),
+      entityLabel: expense.title,
+      action: input.decision === "approved" ? "approve" : "reject",
+      summary: `Expense ${input.decision}: ${expense.title}`,
+      before: { status: "pending" },
+      after: {
+        status: expense.status,
+        comment: actorApproval.comment ?? null,
+      },
+    });
   }
 
   return reviews;

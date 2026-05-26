@@ -84,6 +84,8 @@ export async function POST(request: Request) {
       investedAt: parsed.data.investedAt,
       note: parsed.data.note,
       submittedBy: session.user.id,
+      submittedByName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
     });
 
     return NextResponse.json(

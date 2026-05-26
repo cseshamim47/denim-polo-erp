@@ -10,6 +10,7 @@ import {
   uniqReviewIds,
   type ApprovalDecision,
 } from "@/lib/services/approval-review";
+import { recordHistoryEvent } from "@/lib/services/history";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import { applyPurchaseToVariant } from "@/lib/domain/stock-calculations";
 import PurchaseModel, {
@@ -90,6 +91,7 @@ export async function createPurchase(input: {
   additionalCost?: number;
   purchaseDate: Date;
   createdBy: string;
+  createdByName: string;
   billImageUrl?: string;
   note?: string;
 }): Promise<HydratedDocument<Purchase>> {
@@ -118,7 +120,7 @@ export async function createPurchase(input: {
   const cashOutTotal = totalCost + additionalCost;
   const landedCostPerUnit = cashOutTotal / input.qty;
 
-  return PurchaseModel.create({
+  const purchase = await PurchaseModel.create({
     variantId: new Types.ObjectId(input.variantId),
     qty: input.qty,
     costPerUnit: toDecimal128(input.costPerUnit),
@@ -137,6 +139,34 @@ export async function createPurchase(input: {
     ),
     requiredApprovalCountSnapshot: snapshot.requiredApprovalCount,
   });
+
+  const product = await ProductModel.findById(variant.productId)
+    .select({ name: 1 })
+    .lean();
+
+  await recordHistoryEvent({
+    actorId: input.createdBy,
+    actorName: input.createdByName,
+    actorRole: "partner",
+    module: "purchases",
+    entityType: "purchase",
+    entityId: purchase._id.toString(),
+    entityLabel: `${product?.name ?? "Unknown product"} · ${variant.sku}`,
+    action: "create",
+    summary: `Purchase created: ${product?.name ?? "Unknown product"} (${input.qty} @ ${input.costPerUnit})`,
+    before: null,
+    after: {
+      variantId: input.variantId,
+      qty: input.qty,
+      costPerUnit: input.costPerUnit,
+      additionalCost,
+      cashOutTotal,
+      purchaseDate: input.purchaseDate.toISOString(),
+      status: "pending",
+    },
+  });
+
+  return purchase;
 }
 
 export async function reviewPurchase(input: {
@@ -247,6 +277,30 @@ export async function reviewPurchases(input: {
         decidedAt: actorApproval.decidedAt,
       }),
     );
+
+    await recordHistoryEvent({
+      actorId: input.partnerId,
+      actorName: input.partnerName,
+      actorRole: "partner",
+      module: "purchases",
+      entityType: "purchase",
+      entityId: purchase._id.toString(),
+      entityLabel: purchase.variantId.toString(),
+      action: input.decision === "approved" ? "approve" : "reject",
+      summary: `Purchase ${input.decision}: ${purchase._id.toString()}`,
+      before: {
+        status:
+          input.decision === "approved" && purchase.status === "approved"
+            ? "pending"
+            : purchase.status === "rejected"
+              ? "pending"
+              : "pending",
+      },
+      after: {
+        status: purchase.status,
+        comment: actorApproval.comment ?? null,
+      },
+    });
   }
 
   return reviews;

@@ -5,6 +5,7 @@ import {
   applyCustomerReturn,
   applyDamagedReturn,
 } from "@/lib/domain/stock-calculations";
+import { recordHistoryEvent } from "@/lib/services/history";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import ReturnModel, { type ReturnRecord } from "@/models/Return";
 import SaleModel from "@/models/Sale";
@@ -17,6 +18,7 @@ export async function createReturn(input: {
   returnType: "customer_return" | "damaged";
   note?: string;
   processedBy: string;
+  processedByName: string;
   returnDate: Date;
 }): Promise<HydratedDocument<ReturnRecord>> {
   await connectToDatabase();
@@ -73,7 +75,7 @@ export async function createReturn(input: {
   await variant.save();
   await sale.save();
 
-  return ReturnModel.create({
+  const returnRecord = await ReturnModel.create({
     saleId: new Types.ObjectId(input.saleId),
     saleLineId: new Types.ObjectId(input.saleLineId),
     variantId: new Types.ObjectId(variant._id),
@@ -84,4 +86,28 @@ export async function createReturn(input: {
     processedBy: new Types.ObjectId(input.processedBy),
     returnDate: input.returnDate,
   });
+
+  await recordHistoryEvent({
+    actorId: input.processedBy,
+    actorName: input.processedByName,
+    actorRole: "partner",
+    module: "returns",
+    entityType: "return",
+    entityId: returnRecord._id.toString(),
+    entityLabel: sale.saleNumber,
+    action: "create",
+    summary: `Return created: ${sale.saleNumber}`,
+    before: null,
+    after: {
+      saleId: input.saleId,
+      saleLineId: input.saleLineId,
+      qty: input.qty,
+      returnType: input.returnType,
+      lossAmount,
+      returnDate: input.returnDate.toISOString(),
+      note: input.note ?? null,
+    },
+  });
+
+  return returnRecord;
 }

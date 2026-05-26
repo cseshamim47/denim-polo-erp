@@ -6,6 +6,7 @@ import {
   uniqReviewIds,
   type ApprovalDecision,
 } from "@/lib/services/approval-review";
+import { recordHistoryEvent } from "@/lib/services/history";
 import {
   buildInvestmentApprovalSnapshot,
   evaluateInvestmentDecision,
@@ -19,6 +20,7 @@ export async function createInvestment(input: {
   investedAt: Date;
   note?: string;
   submittedBy: string;
+  submittedByName: string;
 }): Promise<HydratedDocument<Investment>> {
   await connectToDatabase();
 
@@ -37,7 +39,7 @@ export async function createInvestment(input: {
     );
   }
 
-  return InvestmentModel.create({
+  const investment = await InvestmentModel.create({
     partnerId: new Types.ObjectId(input.submittedBy),
     amount: toDecimal128(input.amount),
     note: input.note ?? null,
@@ -50,6 +52,27 @@ export async function createInvestment(input: {
     requiredApprovalCountSnapshot: snapshot.requiredApprovalCount,
     investedAt: input.investedAt,
   });
+
+  await recordHistoryEvent({
+    actorId: input.submittedBy,
+    actorName: input.submittedByName,
+    actorRole: "partner",
+    module: "investments",
+    entityType: "investment",
+    entityId: investment._id.toString(),
+    entityLabel: input.submittedByName,
+    action: "create",
+    summary: `Investment created: ${input.submittedByName}`,
+    before: null,
+    after: {
+      amount: input.amount,
+      investedAt: input.investedAt.toISOString(),
+      status: "pending",
+      note: input.note ?? null,
+    },
+  });
+
+  return investment;
 }
 
 export async function reviewInvestment(input: {
@@ -136,6 +159,23 @@ export async function reviewInvestments(input: {
         decidedAt: actorApproval.decidedAt,
       }),
     );
+
+    await recordHistoryEvent({
+      actorId: input.partnerId,
+      actorName: input.partnerName,
+      actorRole: "partner",
+      module: "investments",
+      entityType: "investment",
+      entityId: investment._id.toString(),
+      entityLabel: investment.partnerId.toString(),
+      action: input.decision === "approved" ? "approve" : "reject",
+      summary: `Investment ${input.decision}: ${investment._id.toString()}`,
+      before: { status: "pending" },
+      after: {
+        status: investment.status,
+        comment: actorApproval.comment ?? null,
+      },
+    });
   }
 
   return reviews;

@@ -3,9 +3,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { generateVariantSku } from "@/lib/domain/sku";
+import { pickChangedFields } from "@/lib/domain/history";
 import { normalizeVariantDefaults } from "@/lib/domain/variant-defaults";
 import { getRequiredSession } from "@/lib/auth";
 import { connectToDatabase } from "@/lib/db";
+import { recordHistoryEvent } from "@/lib/services/history";
 import { decimalToNumber, toDecimal128 } from "@/lib/money";
 import ProductModel from "@/models/Product";
 import UserModel from "@/models/User";
@@ -520,6 +522,29 @@ export async function POST(request: Request) {
 
   const createdVariants = await VariantModel.insertMany(variantsToCreate);
 
+  for (const variant of createdVariants) {
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "create",
+      summary: `Variant created: ${variant.sku}`,
+      before: null,
+      after: {
+        sku: variant.sku,
+        color: variant.color,
+        size: variant.size,
+        inventoryMode: variant.inventoryMode,
+        unitLabel: variant.unitLabel,
+        sellingPrice: parsed.data.sellingPrice,
+      },
+    });
+  }
+
   return NextResponse.json(
     {
       createdCount: createdVariants.length,
@@ -602,6 +627,20 @@ export async function DELETE(request: Request) {
     variant.deleteFinalizedAt = new Date();
     await variant.save();
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "approve_delete",
+      summary: `Variant deleted: ${variant.sku}`,
+      before: { isActive: true, deleteRequestStatus: "none" },
+      after: { isActive: false, deleteRequestStatus: "approved" },
+    });
+
     return NextResponse.json({ status: "deleted" });
   }
 
@@ -613,6 +652,23 @@ export async function DELETE(request: Request) {
   variant.deleteRequiredApprovalCountSnapshot = requiredApproverIds.length;
   variant.deleteFinalizedAt = null;
   await variant.save();
+
+  await recordHistoryEvent({
+    actorId: session.user.id,
+    actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+    actorRole: "partner",
+    module: "variants",
+    entityType: "variant",
+    entityId: variant._id.toString(),
+    entityLabel: variant.sku,
+    action: "request_delete",
+    summary: `Variant delete requested: ${variant.sku}`,
+    before: { deleteRequestStatus: "none", isActive: true },
+    after: {
+      deleteRequestStatus: "pending",
+      requiredApprovalCount: requiredApproverIds.length,
+    },
+  });
 
   return NextResponse.json({
     status: "pending_review",
@@ -712,6 +768,7 @@ export async function PUT(request: Request) {
   );
 
   if (requiredApproverIds.length === 0 && requiredApprovalCountSnapshot === 0) {
+    const beforeSellingPrice = decimalToNumber(variant.sellingPrice);
     variant.sellingPrice = toDecimal128(proposedSellingPrice) as never;
     variant.updateRequestStatus = "approved";
     variant.updateRequestedBy = actorId;
@@ -726,6 +783,22 @@ export async function PUT(request: Request) {
     variant.updateRequiredApprovalCountSnapshot = 0;
     variant.updateFinalizedAt = new Date();
     await variant.save();
+
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "approve_update",
+      summary: `Variant updated: ${variant.sku}`,
+      ...pickChangedFields(
+        { sellingPrice: beforeSellingPrice },
+        { sellingPrice: proposedSellingPrice },
+      ),
+    });
 
     return NextResponse.json({ status: "updated" });
   }
@@ -743,6 +816,25 @@ export async function PUT(request: Request) {
   variant.updateRequiredApprovalCountSnapshot = requiredApprovalCountSnapshot;
   variant.updateFinalizedAt = null;
   await variant.save();
+
+  await recordHistoryEvent({
+    actorId: session.user.id,
+    actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+    actorRole: "partner",
+    module: "variants",
+    entityType: "variant",
+    entityId: variant._id.toString(),
+    entityLabel: variant.sku,
+    action: "request_update",
+    summary: `Variant update requested: ${variant.sku}`,
+    ...pickChangedFields(
+      { sellingPrice: decimalToNumber(variant.sellingPrice) },
+      { sellingPrice: proposedSellingPrice },
+    ),
+    meta: {
+      requiredApprovalCount: requiredApprovalCountSnapshot,
+    },
+  });
 
   return NextResponse.json({
     status: "pending_review",
@@ -852,6 +944,20 @@ export async function PATCH(request: Request) {
       variant.updateFinalizedAt = new Date();
       await variant.save();
 
+      await recordHistoryEvent({
+        actorId: session.user.id,
+        actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+        actorRole: "partner",
+        module: "variants",
+        entityType: "variant",
+        entityId: variant._id.toString(),
+        entityLabel: variant.sku,
+        action: "reject_update",
+        summary: `Variant update rejected: ${variant.sku}`,
+        before: { updateRequestStatus: "pending" },
+        after: { updateRequestStatus: "rejected" },
+      });
+
       return NextResponse.json({ status: "rejected" });
     }
 
@@ -873,10 +979,49 @@ export async function PATCH(request: Request) {
       variant.updateFinalizedAt = new Date();
       await variant.save();
 
+      await recordHistoryEvent({
+        actorId: session.user.id,
+        actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+        actorRole: "partner",
+        module: "variants",
+        entityType: "variant",
+        entityId: variant._id.toString(),
+        entityLabel: variant.sku,
+        action: "approve_update",
+        summary: `Variant update approved: ${variant.sku}`,
+        ...pickChangedFields(
+          {
+            sellingPrice:
+              variant.updateProposedSellingPrice == null
+                ? null
+                : decimalToNumber(variant.sellingPrice),
+            updateRequestStatus: "pending",
+          },
+          {
+            sellingPrice: decimalToNumber(variant.sellingPrice),
+            updateRequestStatus: "approved",
+          },
+        ),
+      });
+
       return NextResponse.json({ status: "approved" });
     }
 
     await variant.save();
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "approve_update",
+      summary: `Variant update reviewed: ${variant.sku}`,
+      before: { updateRequestStatus: "pending" },
+      after: { updateRequestStatus: "pending" },
+      meta: { reviewDecision: parsedUpdate.data.decision },
+    });
     return NextResponse.json({ status: "pending" });
   }
 
@@ -970,6 +1115,20 @@ export async function PATCH(request: Request) {
     variant.deleteFinalizedAt = new Date();
     await variant.save();
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "reject_delete",
+      summary: `Variant delete rejected: ${variant.sku}`,
+      before: { deleteRequestStatus: "pending", isActive: true },
+      after: { deleteRequestStatus: "rejected", isActive: true },
+    });
+
     return NextResponse.json({ status: "rejected" });
   }
 
@@ -999,9 +1158,37 @@ export async function PATCH(request: Request) {
     variant.deleteFinalizedAt = new Date();
     await variant.save();
 
+    await recordHistoryEvent({
+      actorId: session.user.id,
+      actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+      actorRole: "partner",
+      module: "variants",
+      entityType: "variant",
+      entityId: variant._id.toString(),
+      entityLabel: variant.sku,
+      action: "approve_delete",
+      summary: `Variant delete approved: ${variant.sku}`,
+      before: { deleteRequestStatus: "pending", isActive: true },
+      after: { deleteRequestStatus: "approved", isActive: false },
+    });
+
     return NextResponse.json({ status: "approved" });
   }
 
   await variant.save();
+  await recordHistoryEvent({
+    actorId: session.user.id,
+    actorName: session.user.name ?? session.user.email ?? "Unknown partner",
+    actorRole: "partner",
+    module: "variants",
+    entityType: "variant",
+    entityId: variant._id.toString(),
+    entityLabel: variant.sku,
+    action: "approve_delete",
+    summary: `Variant delete reviewed: ${variant.sku}`,
+    before: { deleteRequestStatus: "pending", isActive: true },
+    after: { deleteRequestStatus: "pending", isActive: true },
+    meta: { reviewDecision: parsed.data.decision },
+  });
   return NextResponse.json({ status: "pending" });
 }

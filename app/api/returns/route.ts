@@ -33,6 +33,8 @@ export async function POST(request: Request) {
     const returnRecord = await createReturn({
       ...parsed.data,
       processedBy: session.user.id,
+      processedByName:
+        session.user.name ?? session.user.email ?? "Unknown partner",
     });
 
     return NextResponse.json(

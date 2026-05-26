@@ -72,7 +72,13 @@ const productSchema = new Schema<Product>(
   },
 );
 
-productSchema.index({ category: 1, name: 1 }, { unique: true });
+productSchema.index(
+  { category: 1, name: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isActive: true },
+  },
+);
 
 function patchProductSchema(targetSchema: Schema) {
   if (!targetSchema.path("deleteRequestStatus")) {

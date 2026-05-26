@@ -6,6 +6,7 @@ import {
   uniqReviewIds,
   type ApprovalDecision,
 } from "@/lib/services/approval-review";
+import { recordHistoryEvent } from "@/lib/services/history";
 import {
   buildAssetApprovalSnapshot,
   evaluateAssetDecision,
@@ -21,6 +22,7 @@ export async function createAsset(input: {
   note?: string;
   assetDate: Date;
   submittedBy: string;
+  submittedByName: string;
 }): Promise<HydratedDocument<Asset>> {
   await connectToDatabase();
 
@@ -37,7 +39,7 @@ export async function createAsset(input: {
     throw new Error("asset approval requires at least one active approver");
   }
 
-  return AssetModel.create({
+  const asset = await AssetModel.create({
     title: input.title,
     category: input.category.trim().toUpperCase(),
     amount: toDecimal128(input.amount),
@@ -52,6 +54,29 @@ export async function createAsset(input: {
     requiredApprovalCountSnapshot: snapshot.requiredApprovalCount,
     assetDate: input.assetDate,
   });
+
+  await recordHistoryEvent({
+    actorId: input.submittedBy,
+    actorName: input.submittedByName,
+    actorRole: "partner",
+    module: "assets",
+    entityType: "asset",
+    entityId: asset._id.toString(),
+    entityLabel: input.title,
+    action: "create",
+    summary: `Asset created: ${input.title}`,
+    before: null,
+    after: {
+      title: input.title,
+      category: input.category.trim().toUpperCase(),
+      amount: input.amount,
+      assetDate: input.assetDate.toISOString(),
+      status: "pending",
+      note: input.note ?? null,
+    },
+  });
+
+  return asset;
 }
 
 export async function reviewAsset(input: {
@@ -138,6 +163,23 @@ export async function reviewAssets(input: {
         decidedAt: actorApproval.decidedAt,
       }),
     );
+
+    await recordHistoryEvent({
+      actorId: input.partnerId,
+      actorName: input.partnerName,
+      actorRole: "partner",
+      module: "assets",
+      entityType: "asset",
+      entityId: asset._id.toString(),
+      entityLabel: asset.title,
+      action: input.decision === "approved" ? "approve" : "reject",
+      summary: `Asset ${input.decision}: ${asset.title}`,
+      before: { status: "pending" },
+      after: {
+        status: asset.status,
+        comment: actorApproval.comment ?? null,
+      },
+    });
   }
 
   return reviews;
