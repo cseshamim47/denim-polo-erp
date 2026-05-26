@@ -1102,7 +1102,7 @@ export default function ProductsPage() {
           </h3>
 
           {isLoading ? (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-black/15 backdrop-blur-[1px]">
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-black/15 backdrop-blur-[1px]">
               <Spinner className="text-white" label="Loading catalog data..." />
             </div>
           ) : null}
@@ -1388,7 +1388,6 @@ export default function ProductsPage() {
 
           <button
             className="btn-secondary mt-3 w-full sm:w-auto"
-            disabled={isLoading}
             onClick={submitVariant}
             type="button"
           >
@@ -1399,7 +1398,7 @@ export default function ProductsPage() {
 
       <section className="relative space-y-6 rounded-[1.8rem] bg-white/80 p-4 ring-1 ring-(--stroke-soft) sm:p-6">
         {isLoading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-white/70 backdrop-blur-[1px]">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[1.8rem] bg-white/70 backdrop-blur-[1px]">
             <Spinner label="Loading catalog records..." />
           </div>
         ) : null}
