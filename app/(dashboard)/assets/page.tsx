@@ -56,6 +56,7 @@ function buildAssetQuery(filters: AssetFiltersState) {
 export default function AssetsPage() {
   const [data, setData] = useState<AssetsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
   const [openField, setOpenField] = useState<string | null>(null);
   const [filters, setFilters] = useState<AssetFiltersState>(initialFilters);
@@ -88,6 +89,7 @@ export default function AssetsPage() {
     }
 
     setData(payload);
+    setHasLoadedOnce(true);
     setSelectedAssetIds([]);
     setIsLoading(false);
   }
@@ -117,6 +119,7 @@ export default function AssetsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setHasLoadedOnce(true);
           setSelectedAssetIds([]);
           setIsLoading(false);
         }
@@ -275,6 +278,8 @@ export default function AssetsPage() {
     );
   }
 
+  const showInitialLoading = isLoading && !hasLoadedOnce;
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
@@ -288,7 +293,7 @@ export default function AssetsPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {isLoading ? (
+        {showInitialLoading ? (
           Array.from({ length: 3 }).map((_, index) => (
             <div
               key={`asset-summary-loading-${index}`}
@@ -344,7 +349,7 @@ export default function AssetsPage() {
 
       <AssetHistory
         data={data}
-        isLoading={isLoading}
+        isLoading={showInitialLoading}
         filters={filters}
         onChangeFilters={(next) => {
           setFilters(next);

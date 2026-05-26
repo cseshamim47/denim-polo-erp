@@ -41,6 +41,7 @@ export default function ApprovalsPage() {
   const [openField, setOpenField] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function ApprovalsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setHasLoadedOnce(true);
           setSelectedKeys([]);
           setIsLoading(false);
         }
@@ -234,6 +236,8 @@ export default function ApprovalsPage() {
     );
   }
 
+  const showInitialLoading = isLoading && !hasLoadedOnce;
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
@@ -244,7 +248,7 @@ export default function ApprovalsPage() {
         </p>
       </section>
 
-      <ApprovalSummary data={data} isLoading={isLoading} />
+      <ApprovalSummary data={data} isLoading={showInitialLoading} />
 
       <ApprovalFilters
         filters={filters}
@@ -259,7 +263,7 @@ export default function ApprovalsPage() {
 
       <ApprovalList
         data={data}
-        isLoading={isLoading}
+        isLoading={showInitialLoading}
         view={filters.view}
         selectedIds={selectedKeys}
         onToggleSelected={toggleSelected}

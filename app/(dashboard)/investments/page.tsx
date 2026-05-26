@@ -163,6 +163,7 @@ function buildInvestmentQuery(filters: {
 export default function InvestmentsPage() {
   const [data, setData] = useState<InvestmentsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [openFilterField, setOpenFilterField] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     page: 1,
@@ -217,6 +218,7 @@ export default function InvestmentsPage() {
     }
 
     setData(payload);
+    setHasLoadedOnce(true);
     setSelectedInvestmentIds([]);
     setIsLoading(false);
   }
@@ -248,6 +250,7 @@ export default function InvestmentsPage() {
 
         if (!cancelled) {
           setData(payload);
+          setHasLoadedOnce(true);
           setSelectedInvestmentIds([]);
           setIsLoading(false);
         }
@@ -481,6 +484,7 @@ export default function InvestmentsPage() {
     reviewableInvestmentIds.every((investmentId) =>
       selectedInvestmentIds.includes(investmentId),
     );
+  const showInitialLoading = isLoading && !hasLoadedOnce;
 
   return (
     <div className="space-y-6">
@@ -499,7 +503,7 @@ export default function InvestmentsPage() {
           </div>
           <div className="rounded-[1.2rem] bg-(--surface-accent-soft) p-4">
             <p className="text-sm text-(--text-secondary)">Balance in hand</p>
-            {isLoading ? (
+            {showInitialLoading ? (
               <Spinner
                 className="mt-5 justify-start"
                 label="Loading balance..."
@@ -512,7 +516,7 @@ export default function InvestmentsPage() {
           </div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {isLoading
+          {showInitialLoading
             ? Array.from({ length: 3 }).map((_, index) => (
                 <div
                   key={`approved-total-loading-${index}`}
@@ -863,7 +867,7 @@ export default function InvestmentsPage() {
             Investment history
           </h3>
           <p className="text-sm text-(--text-secondary)">
-            {isLoading
+            {showInitialLoading
               ? "Loading..."
               : `${data?.pagination.totalCount ?? 0} record(s)`}
           </p>
@@ -880,7 +884,7 @@ export default function InvestmentsPage() {
           label="investment(s)"
         />
         <div className="mt-4 grid gap-4 md:hidden">
-          {isLoading ? (
+          {showInitialLoading ? (
             Array.from({ length: 3 }).map((_, index) => (
               <Card
                 key={`investment-loading-mobile-${index}`}
@@ -1057,9 +1061,9 @@ export default function InvestmentsPage() {
                 <th className="px-3 py-2 text-center font-semibold">Note</th>
                 <th className="px-3 py-2 text-center font-semibold">Action</th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
-              {isLoading ? (
+          </thead>
+          <tbody className="divide-y divide-(--stroke-soft) bg-white/70">
+              {showInitialLoading ? (
                 <tr>
                   <td className="px-3 py-8" colSpan={9}>
                     <Spinner label="Loading investment history..." />

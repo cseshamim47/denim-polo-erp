@@ -71,6 +71,7 @@ export default function PerfumesPage() {
   });
   const [form, setForm] = useState(initialForm);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   async function loadPerfumePricing() {
@@ -91,6 +92,7 @@ export default function PerfumesPage() {
       }
 
       setData(payload);
+      setHasLoadedOnce(true);
     } finally {
       setIsLoading(false);
     }
@@ -112,15 +114,18 @@ export default function PerfumesPage() {
 
         if (!response.ok || !payload) {
           toast.error("Unable to load perfume pricing.");
+          setIsLoading(false);
           return;
         }
 
         if (!isPerfumePricingPayload(payload)) {
           toast.error(payload.error ?? "Unable to load perfume pricing.");
+          setIsLoading(false);
           return;
         }
 
         setData(payload);
+        setHasLoadedOnce(true);
         setIsLoading(false);
       })
       .catch(() => {
@@ -141,6 +146,7 @@ export default function PerfumesPage() {
     () => data.bottles.find((bottle) => bottle.id === form.bottleVariantId),
     [data.bottles, form.bottleVariantId],
   );
+  const showInitialLoading = isLoading && !hasLoadedOnce;
 
   async function createRule() {
     if (!form.perfumeVariantId || !form.bottleVariantId) {
@@ -335,7 +341,7 @@ export default function PerfumesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-5 sm:px-6">
-            {isLoading ? (
+            {showInitialLoading ? (
               <p className="text-sm text-(--text-secondary)">Loading rules...</p>
             ) : data.rules.length > 0 ? (
               <div className="grid gap-3">

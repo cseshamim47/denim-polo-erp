@@ -38,6 +38,7 @@ export default function HistoryPage() {
   const [data, setData] = useState<HistoryResponse | null>(null);
   const [filters, setFilters] = useState<HistoryFiltersState>(initialFilters);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +57,7 @@ export default function HistoryPage() {
 
         if (!cancelled) {
           setData(payload);
+          setHasLoadedOnce(true);
           setIsLoading(false);
         }
       })
@@ -71,6 +73,8 @@ export default function HistoryPage() {
     };
   }, [filters]);
 
+  const showInitialLoading = isLoading && !hasLoadedOnce;
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.8rem] bg-white/80 p-6 ring-1 ring-(--stroke-soft)">
@@ -80,7 +84,7 @@ export default function HistoryPage() {
         </p>
       </section>
 
-      <HistorySummary data={data} isLoading={isLoading} />
+      <HistorySummary data={data} isLoading={showInitialLoading} />
       <HistoryFilters
         data={data}
         filters={filters}
@@ -89,7 +93,7 @@ export default function HistoryPage() {
           setFilters(next);
         }}
       />
-      <HistoryList data={data} isLoading={isLoading} />
+      <HistoryList data={data} isLoading={showInitialLoading} />
     </div>
   );
 }
