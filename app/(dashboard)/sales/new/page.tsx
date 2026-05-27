@@ -67,14 +67,15 @@ type StandardCartLine = {
 
 type PerfumeCartLine = {
   mode: "perfume";
-  pricingRuleId: string;
   perfumeVariantId: string;
   bottleVariantId: string;
   label: string;
   sku: string;
   soldMl: number;
   bottleLabel: string;
+  bottleSellingPrice: number;
   sellingPrice: number;
+  pricingRuleId?: string;
 };
 
 type CartLine = StandardCartLine | PerfumeCartLine;
@@ -118,6 +119,7 @@ export default function NewSalePage() {
   const [qty, setQty] = useState(1);
   const [perfumeVariantId, setPerfumeVariantId] = useState("");
   const [perfumeRuleId, setPerfumeRuleId] = useState("");
+  const [customBottleVariantId, setCustomBottleVariantId] = useState("");
   const [perfumeMode, setPerfumeMode] = useState<"preset" | "custom">("preset");
   const [customPerfumeMl, setCustomPerfumeMl] = useState(5);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -334,11 +336,18 @@ export default function NewSalePage() {
     perfumePricing.rules.find((rule) => rule.id === perfumeRuleId) ?? null;
   const selectedPerfumeVariant =
     allVariants.find((variant) => variant.id === perfumeVariantId) ?? null;
-  const selectedBottleVariant = selectedPerfumeRule
-    ? allVariants.find(
-        (variant) => variant.id === selectedPerfumeRule.bottleVariantId,
-      ) ?? null
-    : null;
+  const selectedBottleVariant =
+    perfumeMode === "preset"
+      ? selectedPerfumeRule
+        ? allVariants.find(
+            (variant) => variant.id === selectedPerfumeRule.bottleVariantId,
+          ) ?? null
+        : null
+      : allVariants.find((variant) => variant.id === customBottleVariantId) ?? null;
+  const perfumeBottleSellingPrice =
+    perfumeMode === "preset"
+      ? selectedPerfumeRule?.bottleSellingPrice ?? 0
+      : selectedBottleVariant?.sellingPrice ?? 0;
   const perfumeSoldMl =
     perfumeMode === "preset"
       ? selectedPerfumeRule?.fillMl ?? 0
@@ -348,8 +357,8 @@ export default function NewSalePage() {
       ? selectedPerfumeVariant.avgCost * perfumeSoldMl
       : 0;
   const perfumePreviewSellingPrice =
-    selectedPerfumeRule && perfumeSoldMl > 0
-      ? perfumePreviewLiquidCost * 2 + selectedPerfumeRule.bottleSellingPrice
+    selectedBottleVariant && perfumeSoldMl > 0
+      ? perfumePreviewLiquidCost * 2 + perfumeBottleSellingPrice
       : 0;
   const perfumePreviewBottleCost = selectedBottleVariant?.avgCost ?? 0;
   const perfumePreviewProfit =
@@ -451,8 +460,12 @@ export default function NewSalePage() {
   }
 
   function addPerfumeLine() {
-    if (!selectedPerfumeVariant || !selectedPerfumeRule || perfumeSoldMl <= 0) {
-      setStatus("Pick perfume, bottle rule, and ml first.");
+    if (!selectedPerfumeVariant || !selectedBottleVariant || perfumeSoldMl <= 0) {
+      setStatus(
+        perfumeMode === "preset"
+          ? "Pick perfume, bottle rule, and ml first."
+          : "Pick perfume, bottle, and ml first.",
+      );
       return;
     }
 
@@ -470,18 +483,27 @@ export default function NewSalePage() {
       ...currentCart,
       {
         mode: "perfume",
-        pricingRuleId: selectedPerfumeRule.id,
+        pricingRuleId:
+          perfumeMode === "preset" ? selectedPerfumeRule?.id : undefined,
         perfumeVariantId: selectedPerfumeVariant.id,
-        bottleVariantId: selectedPerfumeRule.bottleVariantId,
-        label: selectedPerfumeRule.perfumeLabel,
+        bottleVariantId: selectedBottleVariant.id,
+        label:
+          perfumeMode === "preset"
+            ? selectedPerfumeRule?.perfumeLabel ?? selectedPerfumeVariant.sku
+            : `${getProductNameById(selectedPerfumeVariant.productId)} · custom`,
         sku: selectedPerfumeVariant.sku,
         soldMl: perfumeSoldMl,
-        bottleLabel: selectedPerfumeRule.bottleLabel,
+        bottleLabel:
+          perfumeMode === "preset"
+            ? selectedPerfumeRule?.bottleLabel ?? selectedBottleVariant.size
+            : `${getProductNameById(selectedBottleVariant.productId)} · ${selectedBottleVariant.size}`,
+        bottleSellingPrice: perfumeBottleSellingPrice,
         sellingPrice: perfumePreviewSellingPrice,
       },
     ]);
 
     setPerfumeRuleId("");
+    setCustomBottleVariantId("");
     setCustomPerfumeMl(5);
     setStatus(null);
   }
@@ -521,8 +543,16 @@ export default function NewSalePage() {
               }
             : {
                 mode: "perfume" as const,
-                pricingRuleId: line.pricingRuleId,
                 soldMl: line.soldMl,
+                ...(line.pricingRuleId
+                  ? {
+                      pricingRuleId: line.pricingRuleId,
+                    }
+                  : {
+                      perfumeVariantId: line.perfumeVariantId,
+                      bottleVariantId: line.bottleVariantId,
+                      bottleSellingPrice: line.bottleSellingPrice,
+                    }),
               }),
         })),
       }),
@@ -721,6 +751,7 @@ export default function NewSalePage() {
                   onChange={(event) => {
                     setPerfumeVariantId(event.target.value);
                     setPerfumeRuleId("");
+                    setCustomBottleVariantId("");
                   }}
                 >
                   <option value="">Select perfume</option>
@@ -734,20 +765,39 @@ export default function NewSalePage() {
               </label>
 
               <label className="space-y-2 text-sm text-(--text-secondary)">
-                Price rule / bottle
-                <select
-                  className="field"
-                  value={perfumeRuleId}
-                  onChange={(event) => setPerfumeRuleId(event.target.value)}
-                >
-                  <option value="">Select bottle rule</option>
-                  {perfumeRulesForSelectedPerfume.map((rule: PerfumeRule) => (
-                    <option key={rule.id} value={rule.id}>
-                      {rule.bottleLabel} · default {rule.fillMl}ml · add-on{" "}
-                      {currency(rule.bottleSellingPrice)}
-                    </option>
-                  ))}
-                </select>
+                {perfumeMode === "preset" ? "Price rule / bottle" : "Bottle"}
+                {perfumeMode === "preset" ? (
+                  <select
+                    className="field"
+                    value={perfumeRuleId}
+                    onChange={(event) => setPerfumeRuleId(event.target.value)}
+                  >
+                    <option value="">Select bottle rule</option>
+                    {perfumeRulesForSelectedPerfume.map((rule: PerfumeRule) => (
+                      <option key={rule.id} value={rule.id}>
+                        {rule.bottleLabel} · default {rule.fillMl}ml · add-on{" "}
+                        {currency(rule.bottleSellingPrice)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    className="field"
+                    value={customBottleVariantId}
+                    onChange={(event) =>
+                      setCustomBottleVariantId(event.target.value)
+                    }
+                  >
+                    <option value="">Select bottle</option>
+                    {perfumePricing.bottles.map((bottle) => (
+                      <option key={bottle.id} value={bottle.id}>
+                        {bottle.productName} · {bottle.size} · stock{" "}
+                        {bottle.stockQty} {bottle.unitLabel} · add-on{" "}
+                        {currency(bottle.defaultSellingPrice)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
             </div>
 
@@ -813,7 +863,7 @@ export default function NewSalePage() {
               <p>
                 Bottle add-on:{" "}
                 <span className="font-semibold text-foreground">
-                  {currency(selectedPerfumeRule?.bottleSellingPrice ?? 0)}
+                  {currency(perfumeBottleSellingPrice)}
                 </span>
               </p>
               <p>

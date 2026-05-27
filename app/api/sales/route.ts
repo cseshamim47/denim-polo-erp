@@ -34,8 +34,11 @@ const saleSchema = z.object({
       z.union([
         z.object({
           mode: z.literal("perfume"),
-          pricingRuleId: z.string().trim().min(1),
           soldMl: z.number().int().positive(),
+          pricingRuleId: z.string().trim().min(1).optional(),
+          perfumeVariantId: z.string().trim().min(1).optional(),
+          bottleVariantId: z.string().trim().min(1).optional(),
+          bottleSellingPrice: z.number().nonnegative().optional(),
         }),
         z.object({
           mode: z.literal("standard").optional().default("standard"),

@@ -37,8 +37,11 @@ export async function createSale(input: {
       }
     | {
         mode: "perfume";
-        pricingRuleId: string;
         soldMl: number;
+        pricingRuleId?: string;
+        perfumeVariantId?: string;
+        bottleVariantId?: string;
+        bottleSellingPrice?: number;
       }
   >;
 }): Promise<HydratedDocument<Sale>> {
@@ -49,17 +52,26 @@ export async function createSale(input: {
 
   for (const item of input.items) {
     if (item.mode === "perfume") {
-      const pricingRule = await PerfumePricingRuleModel.findById(
-        item.pricingRuleId,
-      );
+      const pricingRule = item.pricingRuleId
+        ? await PerfumePricingRuleModel.findById(item.pricingRuleId)
+        : null;
 
-      if (!pricingRule || !pricingRule.isActive) {
+      if (item.pricingRuleId && (!pricingRule || !pricingRule.isActive)) {
         throw new Error("perfume pricing rule not found");
       }
 
+      const perfumeVariantId =
+        pricingRule?.perfumeVariantId.toString() ?? item.perfumeVariantId;
+      const bottleVariantId =
+        pricingRule?.bottleVariantId.toString() ?? item.bottleVariantId;
+
+      if (!perfumeVariantId || !bottleVariantId) {
+        throw new Error("perfume bottle selection is incomplete");
+      }
+
       const [perfumeVariant, bottleVariant] = await Promise.all([
-        VariantModel.findById(pricingRule.perfumeVariantId),
-        VariantModel.findById(pricingRule.bottleVariantId),
+        VariantModel.findById(perfumeVariantId),
+        VariantModel.findById(bottleVariantId),
       ]);
 
       if (!perfumeVariant || perfumeVariant.inventoryMode !== "volume") {
@@ -111,9 +123,9 @@ export async function createSale(input: {
 
       const avgCostPerMl = decimalToNumber(perfumeVariant.avgCost);
       const bottleBuyingCost = decimalToNumber(bottleVariant.avgCost);
-      const bottleSellingPrice = decimalToNumber(
-        pricingRule.bottleSellingPrice,
-      );
+      const bottleSellingPrice = pricingRule
+        ? decimalToNumber(pricingRule.bottleSellingPrice)
+        : item.bottleSellingPrice ?? decimalToNumber(bottleVariant.sellingPrice);
       const financials = buildPerfumeSaleFinancials({
         avgCostPerMl,
         soldMl: item.soldMl,
